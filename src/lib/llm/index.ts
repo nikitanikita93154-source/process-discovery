@@ -1,0 +1,138 @@
+import { z, type ZodType } from "zod";
+
+// ============================================================
+// Единственный LLM-адаптер. Реализация — OpenAI-совместимый API.
+// Env (обязательны): LLM_BASE_URL, LLM_API_KEY, LLM_MODEL.
+// При ошибке валидации JSON — repair-запрос (max 2 попытки суммарно).
+// ============================================================
+
+export interface ChatMessage {
+  role: "system" | "user" | "assistant";
+  content: string;
+}
+
+export interface ChatOptions<T> {
+  /** zod-схема строгого JSON-выхода (→ JSON Schema для API). */
+  schema?: ZodType<T>;
+  temperature?: number;
+}
+
+export class LLMError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "LLMError";
+  }
+}
+
+function assertEnv(): { baseUrl: string; apiKey: string; model: string } {
+  const baseUrl = process.env.LLM_BASE_URL;
+  const apiKey = process.env.LLM_API_KEY;
+  const model = process.env.LLM_MODEL;
+  if (!baseUrl || !apiKey || !model) {
+    throw new LLMError(
+      "LLM не настроен: задайте переменные окружения LLM_BASE_URL, LLM_API_KEY, LLM_MODEL (см. Readme)",
+    );
+  }
+  return { baseUrl: baseUrl.replace(/\/+$/, ""), apiKey, model };
+}
+
+function extractJson(raw: string): unknown {
+  let text = raw.trim();
+  // Убираем markdown-ограждения ```json ... ```
+  const fence = text.match(/```(?:json)?\s*([\s\S]*?)```/);
+  if (fence) text = fence[1].trim();
+  try {
+    return JSON.parse(text);
+  } catch {
+    // Иногда модель возвращает JSON с пояснениями до/после — берём самый внешний {...}
+    const start = text.indexOf("{");
+    const end = text.lastIndexOf("}");
+    if (start !== -1 && end > start) {
+      return JSON.parse(text.slice(start, end + 1));
+    }
+    throw new LLMError("LLM вернул не-JSON ответ");
+  }
+}
+
+async function callOpenAiCompatible(
+  messages: ChatMessage[],
+  schemaJson: Record<string, unknown> | undefined,
+  temperature: number,
+): Promise<string> {
+  const { baseUrl, apiKey, model } = assertEnv();
+  const body: Record<string, unknown> = {
+    model,
+    messages: messages.map((m) => ({ role: m.role, content: m.content })),
+    temperature,
+  };
+  if (schemaJson) {
+    body.response_format = {
+      type: "json_schema",
+      json_schema: { name: "result", strict: false, schema: schemaJson },
+    };
+  }
+
+  const res = await fetch(`${baseUrl}/chat/completions`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(90_000),
+  });
+
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new LLMError(`LLM API ${res.status}: ${text.slice(0, 300)}`);
+  }
+  const json = (await res.json()) as {
+    choices?: { message?: { content?: string } }[];
+  };
+  const content = json.choices?.[0]?.message?.content;
+  if (!content) throw new LLMError("LLM API: пустой ответ");
+  return content;
+}
+
+/**
+ * Один вызов LLM со строгим JSON-выходом и zod-валидацией.
+ * Сетевая ошибка или провал валидации → repair-запрос, суммарно max 2 попытки.
+ */
+export async function chat<T>(messages: ChatMessage[], opts: ChatOptions<T> = {}): Promise<T> {
+  const schemaJson = opts.schema ? (z.toJSONSchema(opts.schema) as Record<string, unknown>) : undefined;
+  const conversation: ChatMessage[] = [...messages];
+
+  let lastError: unknown = null;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    let raw: string;
+    try {
+      raw = await callOpenAiCompatible(conversation, schemaJson, opts.temperature ?? 0.3);
+    } catch (e) {
+      lastError = e;
+      // Одна повторная попытка при сетевой/API ошибке
+      continue;
+    }
+    let parsed: unknown;
+    try {
+      parsed = extractJson(raw);
+    } catch (e) {
+      lastError = e;
+      conversation.push({ role: "assistant", content: raw });
+      conversation.push({
+        role: "user",
+        content: "Твой предыдущий ответ не является корректным JSON. Верни ТОЛЬКО валидный JSON по схеме, без пояснений.",
+      });
+      continue;
+    }
+    if (!opts.schema) return parsed as T;
+    const validated = opts.schema.safeParse(parsed);
+    if (validated.success) return validated.data;
+    lastError = new LLMError(`JSON не прошёл валидацию: ${JSON.stringify(validated.error.issues.slice(0, 3))}`);
+    conversation.push({ role: "assistant", content: raw });
+    conversation.push({
+      role: "user",
+      content: `JSON не прошёл валидацию схемы. Ошибки: ${JSON.stringify(validated.error.issues.slice(0, 5))}. Верни исправленный ТОЛЬКО JSON.`,
+    });
+  }
+  throw lastError instanceof Error ? lastError : new LLMError("LLM: неизвестная ошибка");
+}

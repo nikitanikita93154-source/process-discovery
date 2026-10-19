@@ -1,0 +1,132 @@
+"use client";
+
+import { useState } from "react";
+import Link from "next/link";
+import { ru } from "@/lib/content/ru";
+import { Badge } from "@/components/ui/badge";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Progress } from "@/components/ui/progress";
+import { Select } from "@/components/ui/form";
+import { Table, TBody, TD, TH, THead, TR } from "@/components/ui/table";
+import { statusBadgeVariant, statusLabel } from "@/lib/status";
+import { formatDate } from "@/lib/utils";
+
+export interface DashboardRow {
+  id: string;
+  name: string;
+  department: string;
+  t1Status: string;
+  t2Status: string;
+  date: string;
+}
+
+export function DashboardTable({ rows }: { rows: DashboardRow[] }) {
+  const [dept, setDept] = useState("");
+  const departments = Array.from(new Set(rows.map((r) => r.department).filter((d) => d && d !== "—")));
+  const filtered = dept ? rows.filter((r) => r.department === dept) : rows;
+
+  return (
+    <Card>
+      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
+        <CardTitle>Прогресс тестирования</CardTitle>
+        {departments.length > 0 && (
+          <div className="flex items-center gap-2 text-sm">
+            <span className="text-zinc-400">{ru.common.department}:</span>
+            <Select value={dept} onChange={(e) => setDept(e.target.value)} className="w-44">
+              <option value="">все</option>
+              {departments.map((d) => (
+                <option key={d} value={d}>
+                  {d}
+                </option>
+              ))}
+            </Select>
+          </div>
+        )}
+      </CardHeader>
+      <CardContent className="p-0">
+        <Table>
+          <THead>
+            <TR>
+              <TH>{ru.common.employee}</TH>
+              <TH>{ru.common.department}</TH>
+              <TH>Тест 1</TH>
+              <TH>Тест 2</TH>
+              <TH>{ru.common.date}</TH>
+            </TR>
+          </THead>
+          <TBody>
+            {filtered.length === 0 && (
+              <TR>
+                <TD colSpan={5} className="text-center text-zinc-400">
+                  {ru.common.empty}. Пригласите сотрудников на{" "}
+                  <Link href="/dashboard/team" className="text-indigo-600 hover:underline">
+                    странице команды
+                  </Link>
+                  .
+                </TD>
+              </TR>
+            )}
+            {filtered.map((e) => (
+              <TR key={e.id}>
+                <TD className="font-medium">{e.name}</TD>
+                <TD>{e.department}</TD>
+                <TD>
+                  <Badge variant={statusBadgeVariant(e.t1Status)}>{statusLabel(e.t1Status)}</Badge>
+                </TD>
+                <TD>
+                  <Badge variant={statusBadgeVariant(e.t2Status)}>{statusLabel(e.t2Status)}</Badge>
+                </TD>
+                <TD>{e.date}</TD>
+              </TR>
+            ))}
+          </TBody>
+        </Table>
+      </CardContent>
+    </Card>
+  );
+}
+
+export function OrgProgressCards({
+  total,
+  t1Done,
+  t2Done,
+}: {
+  total: number;
+  t1Done: number;
+  t2Done: number;
+}) {
+  const pct = (n: number) => (total === 0 ? 0 : Math.round((n / total) * 100));
+  return (
+    <div className="grid gap-4 sm:grid-cols-3">
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm font-medium text-zinc-500">Сотрудников</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="text-3xl font-bold">{total}</div>
+          <p className="text-xs text-zinc-400">в организации</p>
+        </CardContent>
+      </Card>
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm font-medium text-zinc-500">Тест 1 пройден</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="text-3xl font-bold">{pct(t1Done)}%</div>
+          <Progress value={pct(t1Done)} className="mt-2" />
+        </CardContent>
+      </Card>
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm font-medium text-zinc-500">Тест 2 пройден</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="text-3xl font-bold">{pct(t2Done)}%</div>
+          <Progress value={pct(t2Done)} className="mt-2" />
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+export { formatDate };

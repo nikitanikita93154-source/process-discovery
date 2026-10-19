@@ -1,0 +1,152 @@
+// Process Discovery — модель данных.
+// Enum'ы намеренно заменены на String: SQLite не поддерживает Prisma-enum'ы,
+// а строки остаются совместимыми с PostgreSQL. Значения валидируются zod-схемами.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Organization {
+  id          String    @id @default(cuid())
+  name        String
+  inviteCode  String    @unique
+  hourlyRate  Float     @default(50) // ставка для costPerYear, настройка организации
+  departments Json      @default("[]") // string[] — справочник отделов
+  createdAt   DateTime  @default(now())
+  users       User[]
+  projects    Project[]
+}
+
+model User {
+  id           String   @id @default(cuid())
+  orgId        String
+  email        String   @unique
+  name         String
+  role         String // OWNER | EMPLOYEE
+  passwordHash String
+  createdAt    DateTime @default(now())
+  org          Organization @relation(fields: [orgId], references: [id])
+  test1        Test1Session?
+  interviews   InterviewSession[]
+  comments     Comment[]
+}
+
+model Test1Session {
+  id          String    @id @default(cuid())
+  userId      String    @unique
+  status      String // not_started | in_progress | completed
+  startedAt   DateTime?
+  completedAt DateTime?
+  answers     Json? // Test1Answers (zod, src/lib/schemas/test1.ts)
+  user        User @relation(fields: [userId], references: [id])
+  interviews  InterviewSession[]
+}
+
+model Project {
+  id          String   @id @default(cuid())
+  orgId       String
+  title       String
+  description String   @default("")
+  status      String // draft | capturing | mapping | validating | analyzed
+  createdAt   DateTime @default(now())
+  org         Organization @relation(fields: [orgId], references: [id])
+  sources     Source[]
+  maps        ProcessMap[]
+  followUps   FollowUpQuestion[]
+  conflicts   Conflict[]
+  interviewSessions InterviewSession[]
+}
+
+model Source {
+  id         String   @id @default(cuid())
+  projectId  String
+  type       String // interview | document
+  name       String
+  fileRef    String? // путь в ./uploads
+  status     String // pending | parsed | failed
+  parsedJson Json? // единый формат: { candidateSteps, actors, rules, citations, ... }
+  createdAt  DateTime @default(now())
+  project    Project @relation(fields: [projectId], references: [id])
+}
+
+model InterviewSession {
+  id        String   @id @default(cuid())
+  userId    String
+  projectId String?
+  test1Id   String?
+  status    String // in_progress | awaiting_confirmation | completed | abandoned
+  startedAt DateTime @default(now())
+  endedAt   DateTime?
+  agenda    Json // string[] темы
+  coverage  Json // Record<topic, open|covered|skipped>
+  transcript Json // [{ role, text, ts }]
+  facts     Json // ExtractedFact[]
+  summary   Json? // InterviewSummary
+  user      User @relation(fields: [userId], references: [id])
+  test1     Test1Session? @relation(fields: [test1Id], references: [id])
+  project   Project? @relation(fields: [projectId], references: [id])
+}
+
+model ProcessMap {
+  id        String   @id @default(cuid())
+  projectId String
+  version   Int
+  json      Json // ProcessMapJson (zod, src/lib/schemas/map.ts)
+  author    String // ai | human
+  createdAt DateTime @default(now())
+  project   Project @relation(fields: [projectId], references: [id])
+  comments  Comment[]
+  reports   AnalysisReport[]
+}
+
+model Comment {
+  id         String  @id @default(cuid())
+  mapId      String
+  nodeId     String
+  authorId   String
+  body       String
+  parentId   String?
+  resolved   Boolean @default(false)
+  createdAt  DateTime @default(now())
+  map        ProcessMap @relation(fields: [mapId], references: [id])
+  author     User @relation(fields: [authorId], references: [id])
+  parent     Comment? @relation("Threads", fields: [parentId], references: [id])
+  replies    Comment[] @relation("Threads")
+  followUps  FollowUpQuestion[]
+}
+
+model FollowUpQuestion {
+  id              String @id @default(cuid())
+  projectId       String
+  text            String
+  status          String // open | asked
+  sourceCommentId String?
+  createdAt       DateTime @default(now())
+  project         Project @relation(fields: [projectId], references: [id])
+  sourceComment   Comment? @relation(fields: [sourceCommentId], references: [id])
+}
+
+model AnalysisReport {
+  id        String   @id @default(cuid())
+  mapId     String
+  scores    Json // ScoredStep[] + meta
+  swot      Json // { strengths[], weaknesses[], opportunities[], threats[] }
+  createdAt DateTime @default(now())
+  map       ProcessMap @relation(fields: [mapId], references: [id])
+}
+
+model Conflict {
+  id                String @id @default(cuid())
+  projectId         String
+  docSourceId       String
+  interviewSourceId String
+  description       String
+  resolved          Boolean @default(false)
+  createdAt         DateTime @default(now())
+  project           Project @relation(fields: [projectId], references: [id])
+}
