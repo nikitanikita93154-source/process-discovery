@@ -154,20 +154,71 @@ export const test1AnswersSchema = z.object({
 export type Test1Answers = z.infer<typeof test1AnswersSchema>;
 
 /**
- * Схема частичных ответов для автосохранения: блоки 2–7 опциональны,
- * паспорт и задачи валидируются мягко (черновик может быть неполным).
+ * Схема частичных ответов для автосохранения: полностью мягкая —
+ * черновик может содержать пустые строки/незаполненные поля (форма шлёт ""
+ * для невыбранных select'ов). Строгая валидация выполняется только
+ * при завершении теста (test1AnswersSchema, complete=true).
  */
 export const test1DraftSchema = z.object({
-  passport: passportSchema.partial().optional(),
-  tasks: z.array(taskCandidateSchema.partial().omit({ systems: true }).extend({
-    systems: z.array(z.enum(SYSTEM_OPTIONS)).optional(),
-  })).optional(),
-  expectations: expectationsSchema.partial().optional(),
-  mistakes: mistakesSchema.partial().optional(),
-  gutDecisions: gutDecisionsSchema.partial().optional(),
-  templateTexts: templateTextsSchema.partial().optional(),
-  aiAttitude: aiAttitudeSchema.partial().optional(),
-  openQuestion: openQuestionSchema.optional(),
+  passport: z
+    .object({
+      position: z.string().optional(),
+      positionCustom: z.string().optional(),
+      department: z.string().optional(),
+      experience: z.string().optional(),
+    })
+    .optional(),
+  tasks: z
+    .array(
+      z.object({
+        title: z.string().optional(),
+        frequency: z.string().optional(),
+        duration: z.string().optional(),
+        systems: z.array(z.string()).optional(),
+        systemsCustom: z.string().optional(),
+        irritation: z.number().optional(),
+        regulated: z.string().optional(),
+      }),
+    )
+    .optional(),
+  expectations: z
+    .object({
+      waitingFrequency: z.number().optional(),
+      waitingFor: z.string().optional(),
+      behaviorWhileWaiting: z.string().optional(),
+    })
+    .optional(),
+  mistakes: z
+    .object({
+      tasksWithErrors: z.string().optional(),
+      errorFrequency: z.string().optional(),
+      causes: z.array(z.string()).optional(),
+    })
+    .optional(),
+  gutDecisions: z
+    .object({
+      hasGutDecisions: z.boolean().optional(),
+      example: z.string().optional(),
+    })
+    .optional(),
+  templateTexts: z
+    .object({
+      frequency: z.string().optional(),
+      example: z.string().optional(),
+    })
+    .optional(),
+  aiAttitude: z
+    .object({
+      attitudeScore: z.number().optional(),
+      fears: z.array(z.string()).optional(),
+      genieTask: z.string().optional(),
+    })
+    .optional(),
+  openQuestion: z
+    .object({
+      wasteOfTime: z.string().optional(),
+    })
+    .optional(),
 });
 
 export type Test1Draft = z.infer<typeof test1DraftSchema>;

@@ -7,6 +7,9 @@ import { loginSchema } from "@/lib/schemas/auth";
 export const { handlers, auth, signIn, signOut } = NextAuth({
   session: { strategy: "jwt" },
   pages: { signIn: "/login" },
+  // Самостоятельный хостинг: в прод-режиме Auth.js требует явного доверия хосту,
+  // иначе UntrustedHost (500 на всех auth-вызовах)
+  trustHost: true,
   providers: [
     Credentials({
       name: "credentials",

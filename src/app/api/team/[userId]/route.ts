@@ -19,6 +19,7 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ user
     await db.$transaction([
       db.interviewSession.deleteMany({ where: { userId } }),
       db.comment.deleteMany({ where: { authorId: userId } }),
+      db.projectParticipant.deleteMany({ where: { userId } }),
       db.test1Session.deleteMany({ where: { userId } }),
       db.user.delete({ where: { id: userId } }),
     ]);

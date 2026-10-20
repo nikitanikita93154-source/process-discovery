@@ -60,9 +60,16 @@ async function callOpenAiCompatible(
   temperature: number,
 ): Promise<string> {
   const { baseUrl, apiKey, model } = assertEnv();
+
+  // Thinking-модели (qwen3 и т.п.): отключаем размышления — для строгого
+  // JSON они не нужны и приводят к пустому content / минутным задержкам
+  const finalMessages: ChatMessage[] = /qwen3/i.test(model)
+    ? messages.map((m, i) => (i === 0 ? { ...m, content: `${m.content}\n\n/no_think` } : m))
+    : messages;
+
   const body: Record<string, unknown> = {
     model,
-    messages: messages.map((m) => ({ role: m.role, content: m.content })),
+    messages: finalMessages.map((m) => ({ role: m.role, content: m.content })),
     temperature,
   };
   if (schemaJson) {
@@ -79,7 +86,7 @@ async function callOpenAiCompatible(
       Authorization: `Bearer ${apiKey}`,
     },
     body: JSON.stringify(body),
-    signal: AbortSignal.timeout(90_000),
+    signal: AbortSignal.timeout(240_000), // локальные модели (Ollama) с размышлениями бывают медленными
   });
 
   if (!res.ok) {
@@ -87,9 +94,17 @@ async function callOpenAiCompatible(
     throw new LLMError(`LLM API ${res.status}: ${text.slice(0, 300)}`);
   }
   const json = (await res.json()) as {
-    choices?: { message?: { content?: string } }[];
+    choices?: {
+      message?: {
+        content?: string | null;
+        // thinking-модели: ответ может уехать в reasoning-поля
+        reasoning_content?: string | null;
+        reasoning?: string | null;
+      };
+    }[];
   };
-  const content = json.choices?.[0]?.message?.content;
+  const message = json.choices?.[0]?.message;
+  const content = message?.content || message?.reasoning_content || message?.reasoning;
   if (!content) throw new LLMError("LLM API: пустой ответ");
   return content;
 }

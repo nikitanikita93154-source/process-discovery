@@ -8,10 +8,13 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { SourcesClient } from "@/components/sources-client";
 import { MapClient } from "@/components/map-client";
 import { AnalysisClient } from "@/components/analysis-client";
+import { ProjectT1Panel, matchT1ToSteps } from "@/components/project-t1-panel";
+import { ProjectParticipants } from "@/components/project-participants";
 import { statusBadgeVariant, statusLabel } from "@/lib/status";
 import type { ParsedSource } from "@/lib/schemas/source";
 import type { ProcessMapJson } from "@/lib/schemas/map";
 import type { AnalysisScores, Swot } from "@/lib/schemas/analysis";
+import type { Test1Answers } from "@/lib/schemas/test1";
 
 export default async function ProjectPage({ params }: { params: Promise<{ id: string }> }) {
   const owner = await requirePageOwner();
@@ -47,6 +50,82 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
     : [];
   const sourceNames = Object.fromEntries(sources.map((s) => [s.id, s.name]));
 
+  // Панель «Что говорят анкеты»: задачи Т1 организации, совпадающие с шагами проекта
+  const t1Rows = await db.test1Session.findMany({
+    where: { status: "completed", user: { orgId: owner.orgId } },
+    include: { user: { select: { name: true } } },
+  });
+  const stepNames = sources.flatMap((s) => {
+    const p = s.parsedJson as ParsedSource | null;
+    return (p?.candidateSteps ?? []).map((st) => st.name);
+  });
+  for (const stage of latestMap ? (latestMap.json as ProcessMapJson).stages : []) {
+    stepNames.push(...stage.steps.map((st) => st.name));
+  }
+  const t1Mentions = matchT1ToSteps(
+    t1Rows.map((r) => {
+      const a = r.answers as Test1Answers | null;
+      return {
+        name: r.user.name,
+        department: a?.passport?.department ?? "—",
+        tasks: (a?.tasks ?? []).map((t) => ({
+          title: t.title,
+          frequency: t.frequency,
+          duration: t.duration,
+          irritation: t.irritation,
+        })),
+      };
+    }),
+    stepNames,
+  );
+
+  // Участники проекта (ручное назначение) + свободные сотрудники с подсказкой совпадений
+  const participants = await db.projectParticipant.findMany({
+    where: { projectId: id },
+    include: {
+      user: {
+        select: {
+          id: true,
+          name: true,
+          test1: { select: { status: true, answers: true } },
+          interviews: { select: { status: true } },
+        },
+      },
+    },
+    orderBy: { assignedAt: "asc" },
+  });
+  const assignedIds = new Set(participants.map((p) => p.user.id));
+  const employees = await db.user.findMany({
+    where: { orgId: owner.orgId, role: "EMPLOYEE" },
+    select: {
+      id: true,
+      name: true,
+      test1: { select: { status: true, answers: true } },
+      interviews: { select: { status: true } },
+    },
+    orderBy: { name: "asc" },
+  });
+  const employeeMatches = (userId: string): boolean => {
+    const e = employees.find((x) => x.id === userId);
+    if (!e) return false;
+    const a = e.test1?.answers as Test1Answers | null;
+    const mentions = matchT1ToSteps(
+      [{ name: e.name, department: a?.passport?.department ?? "—", tasks: (a?.tasks ?? []).map((t) => ({ title: t.title, frequency: t.frequency, duration: t.duration, irritation: t.irritation })) }],
+      stepNames,
+    );
+    return mentions.length > 0;
+  };
+  const deptOf = (e: { test1?: { answers: unknown } | null }): string => {
+    const a = e.test1?.answers as Test1Answers | null;
+    return a?.passport?.department ?? "—";
+  };
+  const t2StatusOf = (e: { interviews: { status: string }[] }): string =>
+    e.interviews.some((i) => i.status === "completed")
+      ? "completed"
+      : e.interviews.some((i) => i.status === "in_progress" || i.status === "awaiting_confirmation")
+        ? "in_progress"
+        : "not_started";
+
   const conflictDocNames = new Map(
     await Promise.all(
       [...new Set(conflicts.map((c) => c.docSourceId))].map(async (sid) => {
@@ -81,7 +160,27 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
         </TabsList>
 
         <TabsContent value="sources">
-          <SourcesClient
+          <div className="space-y-4">
+            <ProjectParticipants
+              projectId={id}
+              participants={participants.map((p) => ({
+                id: p.user.id,
+                name: p.user.name,
+                department: deptOf(p.user),
+                t1: p.user.test1?.status ?? "not_started",
+                t2: t2StatusOf(p.user),
+              }))}
+              available={employees
+                .filter((e) => !assignedIds.has(e.id))
+                .map((e) => ({
+                  id: e.id,
+                  name: e.name,
+                  department: deptOf(e),
+                  tasksMatch: employeeMatches(e.id),
+                }))}
+            />
+            <ProjectT1Panel mentions={t1Mentions} />
+            <SourcesClient
             projectId={id}
             sources={sources.map((s) => ({
               id: s.id,
@@ -98,6 +197,7 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
               docSourceName: conflictDocNames.get(c.docSourceId) ?? "",
             }))}
           />
+          </div>
         </TabsContent>
 
         <TabsContent value="map">

@@ -7,6 +7,7 @@ import { handle, ApiError } from "@/lib/api";
 import { requireApiOwner, requireProject } from "@/lib/guards";
 import { ACCEPTED_EXTENSIONS, MAX_FILE_SIZE, extractText, fileExtension } from "@/lib/files/parse";
 import { chat } from "@/lib/llm";
+import { detectDocumentProcess } from "@/lib/agent/routing";
 import {
   conflictDetectionSchema,
   docExtractionSchema,
@@ -110,8 +111,9 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       data: { status: "parsed", parsedJson },
     });
 
-    // --- Детекция конфликтов с фактами интервью ---
+    // --- Детекция конфликтов с фактами интервью + процессов документа ---
     let conflictsCreated = 0;
+    let candidatesCreated = 0;
     const interviewSources = await db.source.findMany({
       where: { projectId: project.id, type: "interview", status: "parsed" },
     });
@@ -151,9 +153,23 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       }
     }
 
+    // Документ описывает процесс, не совпадающий с проектом? → кандидат
+    try {
+      candidatesCreated = await detectDocumentProcess(
+        owner.orgId,
+        project.id,
+        project.title,
+        file.name,
+        parsedJson,
+      );
+    } catch (e) {
+      console.error("[doc-process-detection]", e);
+    }
+
     return NextResponse.json({
       source: { id: source.id, name: file.name, status: "parsed", parsedJson },
       conflictsCreated,
+      candidatesCreated,
     });
   });
 }

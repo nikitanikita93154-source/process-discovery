@@ -1,38 +1,31 @@
 import { db } from "@/lib/db";
 import { factsToParsedSource } from "@/lib/schemas/source";
 import type { InterviewState } from "@/lib/agent/interview";
+import { routeInterview } from "@/lib/agent/routing";
+import type { InterviewSummary } from "@/lib/schemas/test2";
 
 /**
- * Финализация интервью: статус completed, факты → Source(type: interview)
- * в проекте организации (последний проект; если проектов нет — создаётся новый).
- * FollowUp-вопросы из повестки помечаются asked.
+ * Финализация интервью: статус completed, факты → Source(type: interview).
+ * Проект определяется LLM-маршрутизацией (совпадение процесса с проектом
+ * организации; новый процесс → ProcessCandidate). FollowUp-вопросы из
+ * повестки помечаются asked.
  */
 export async function completeInterview(
   state: InterviewState,
-  projectId?: string | null,
-): Promise<{ projectId: string }> {
+  _projectId?: string | null,
+): Promise<{ projectId: string; candidatesCreated?: number }> {
   const employee = await db.user.findUnique({ where: { id: state.userId } });
   const orgId = employee?.orgId;
   if (!orgId) throw new Error("Пользователь не найден");
 
-  let project = projectId
-    ? await db.project.findFirst({ where: { id: projectId, orgId } })
-    : await db.project.findFirst({ where: { orgId }, orderBy: { createdAt: "desc" } });
-
-  if (!project) {
-    project = await db.project.create({
-      data: {
-        orgId,
-        title: `Процесс: ${state.employeeName}`,
-        description: `Автоматически создан по итогам интервью ${state.employeeName}`,
-        status: "capturing",
-      },
-    });
-  }
+  const summary: InterviewSummary = state.summary ?? { processes: [], open_questions: [] };
+  const route = await routeInterview(orgId, state.userId, state.employeeName, summary);
+  const project = await db.project.findFirst({ where: { id: route.projectId, orgId } });
+  if (!project) throw new Error("Проект маршрутизации не найден");
 
   const parsed = factsToParsedSource({
     facts: state.facts,
-    summary: state.summary ?? { processes: [], open_questions: [] },
+    summary,
     citationRef: `Интервью: ${state.employeeName}`,
   });
 
@@ -55,8 +48,8 @@ export async function completeInterview(
 
   await db.interviewSession.update({
     where: { id: state.sessionId },
-    data: { status: "completed", endedAt: new Date() },
+    data: { status: "completed", endedAt: new Date(), projectId: project.id },
   });
 
-  return { projectId: project.id };
+  return { projectId: project.id, candidatesCreated: route.createdCandidates };
 }
