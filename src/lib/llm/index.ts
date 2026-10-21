@@ -24,6 +24,22 @@ export class LLMError extends Error {
   }
 }
 
+/** Статус конфигурации для health-check. */
+export function llmStatus(): { configured: boolean; error?: string } {
+  const missing = [
+    !process.env.LLM_BASE_URL && "LLM_BASE_URL",
+    !process.env.LLM_API_KEY && "LLM_API_KEY",
+    !process.env.LLM_MODEL && "LLM_MODEL",
+  ].filter(Boolean) as string[];
+  if (missing.length > 0) {
+    return {
+      configured: false,
+      error: `Не заданы переменные: ${missing.join(", ")} (файл .env, затем перезапустить сервер)`,
+    };
+  }
+  return { configured: true };
+}
+
 function assertEnv(): { baseUrl: string; apiKey: string; model: string } {
   const baseUrl = process.env.LLM_BASE_URL;
   const apiKey = process.env.LLM_API_KEY;
@@ -54,6 +70,19 @@ function extractJson(raw: string): unknown {
   }
 }
 
+/**
+ * Режим строгого JSON для провайдера. Некоторые API (например, DeepSeek)
+ * не поддерживают response_format=json_schema — при 400 автоматически
+ * деградируем: schema → object (+схема текстом в промте) → без формата.
+ */
+let responseFormatMode: "schema" | "object" | "none" = "schema";
+
+function withSchemaHint(messages: ChatMessage[], schemaJson: Record<string, unknown> | undefined): ChatMessage[] {
+  if (!schemaJson) return messages;
+  const hint = `\n\nФормат ответа: СТРОГО валидный JSON без какого-либо текста вокруг. Обязательная структура: ${JSON.stringify(schemaJson)}`;
+  return messages.map((m, i) => (i === 0 ? { ...m, content: `${m.content}${hint}` } : m));
+}
+
 async function callOpenAiCompatible(
   messages: ChatMessage[],
   schemaJson: Record<string, unknown> | undefined,
@@ -63,50 +92,69 @@ async function callOpenAiCompatible(
 
   // Thinking-модели (qwen3 и т.п.): отключаем размышления — для строгого
   // JSON они не нужны и приводят к пустому content / минутным задержкам
-  const finalMessages: ChatMessage[] = /qwen3/i.test(model)
+  const baseMessages: ChatMessage[] = /qwen3/i.test(model)
     ? messages.map((m, i) => (i === 0 ? { ...m, content: `${m.content}\n\n/no_think` } : m))
     : messages;
 
-  const body: Record<string, unknown> = {
-    model,
-    messages: finalMessages.map((m) => ({ role: m.role, content: m.content })),
-    temperature,
-  };
-  if (schemaJson) {
-    body.response_format = {
-      type: "json_schema",
-      json_schema: { name: "result", strict: false, schema: schemaJson },
+  for (;;) {
+    let finalMessages = baseMessages;
+    const body: Record<string, unknown> = {
+      model,
+      messages: finalMessages.map((m) => ({ role: m.role, content: m.content })),
+      temperature,
     };
-  }
-
-  const res = await fetch(`${baseUrl}/chat/completions`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify(body),
-    signal: AbortSignal.timeout(240_000), // локальные модели (Ollama) с размышлениями бывают медленными
-  });
-
-  if (!res.ok) {
-    const text = await res.text().catch(() => "");
-    throw new LLMError(`LLM API ${res.status}: ${text.slice(0, 300)}`);
-  }
-  const json = (await res.json()) as {
-    choices?: {
-      message?: {
-        content?: string | null;
-        // thinking-модели: ответ может уехать в reasoning-поля
-        reasoning_content?: string | null;
-        reasoning?: string | null;
+    if (schemaJson && responseFormatMode === "schema") {
+      body.response_format = {
+        type: "json_schema",
+        json_schema: { name: "result", strict: false, schema: schemaJson },
       };
-    }[];
-  };
-  const message = json.choices?.[0]?.message;
-  const content = message?.content || message?.reasoning_content || message?.reasoning;
-  if (!content) throw new LLMError("LLM API: пустой ответ");
-  return content;
+    } else if (schemaJson && responseFormatMode === "object") {
+      body.response_format = { type: "json_object" };
+      finalMessages = withSchemaHint(baseMessages, schemaJson);
+      body.messages = finalMessages.map((m) => ({ role: m.role, content: m.content }));
+    } else {
+      finalMessages = withSchemaHint(baseMessages, schemaJson);
+      body.messages = finalMessages.map((m) => ({ role: m.role, content: m.content }));
+    }
+
+    const res = await fetch(`${baseUrl}/chat/completions`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(240_000), // локальные модели (Ollama) с размышлениями бывают медленными
+    });
+
+    if (res.status === 400) {
+      const errText = await res.text().catch(() => "");
+      if (errText.includes("response_format") && responseFormatMode !== "none") {
+        // Провайдер не поддерживает текущий режим — деградируем и ретраим сразу
+        responseFormatMode = responseFormatMode === "schema" ? "object" : "none";
+        continue;
+      }
+      throw new LLMError(`LLM API 400: ${errText.slice(0, 300)}`);
+    }
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      throw new LLMError(`LLM API ${res.status}: ${text.slice(0, 300)}`);
+    }
+    const json = (await res.json()) as {
+      choices?: {
+        message?: {
+          content?: string | null;
+          // thinking-модели: ответ может уехать в reasoning-поля
+          reasoning_content?: string | null;
+          reasoning?: string | null;
+        };
+      }[];
+    };
+    const message = json.choices?.[0]?.message;
+    const content = message?.content || message?.reasoning_content || message?.reasoning;
+    if (!content) throw new LLMError("LLM API: пустой ответ");
+    return content;
+  }
 }
 
 /**

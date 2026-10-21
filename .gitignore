@@ -39,3 +39,12 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# база и загрузки (на сервере свои)
+prisma/dev.db
+prisma/dev.db-journal
+uploads/*
+!uploads/.gitkeep
+
+# пример окружения коммитим
+!.env.example

@@ -163,8 +163,8 @@ export function SourcesClient({
             <div key={s.id} className="rounded-lg border border-zinc-200 p-3">
               <div className="flex items-center justify-between gap-2">
                 <div className="flex flex-wrap items-center gap-2">
-                  <Badge variant={s.type === "interview" ? "default" : "secondary"}>
-                    {s.type === "interview" ? ru.project.typeInterview : ru.project.typeDocument}
+                  <Badge variant={s.type === "interview" ? "default" : s.type === "test1" ? "outline" : "secondary"}>
+                    {s.type === "interview" ? ru.project.typeInterview : s.type === "test1" ? ru.project.typeTest1 : ru.project.typeDocument}
                   </Badge>
                   <span className="font-medium">{s.name}</span>
                   <Badge variant={statusBadgeVariant(s.status)}>{s.status}</Badge>

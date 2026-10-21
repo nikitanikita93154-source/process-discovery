@@ -317,6 +317,7 @@ export const ru = {
     sourcesList: "Источники проекта",
     typeInterview: "Интервью",
     typeDocument: "Документ",
+    typeTest1: "Анкеты Теста 1",
     noSources: "Источников пока нет. Дождитесь интервью сотрудников или загрузите документ.",
     parsedSteps: "шагов",
     parsedRules: "правил",

@@ -3,6 +3,8 @@ import { z } from "zod";
 import { db } from "@/lib/db";
 import { handle, ApiError, parseBody } from "@/lib/api";
 import { requireApiOwner } from "@/lib/guards";
+import { createT1SourceFromCandidate } from "@/lib/agent/candidates";
+import type { EvidenceItem } from "@/lib/schemas/candidate";
 
 const paramsSchema = z.object({ id: z.string() });
 const bodySchema = z.object({ action: z.enum(["accept", "dismiss"]) });
@@ -46,6 +48,17 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     });
     await db.processCandidate.update({ where: { id }, data: { status: "accepted" } });
 
-    return NextResponse.json({ ok: true, projectId: project.id });
+    // Проект из анкет Теста 1 → переносим данные упомянувших сотрудников источником
+    let t1SourceId: string | null = null;
+    if (candidate.origin === "t1") {
+      t1SourceId = await createT1SourceFromCandidate(
+        owner.orgId,
+        project.id,
+        candidate.title,
+        (candidate.evidence as EvidenceItem[] | null) ?? [],
+      );
+    }
+
+    return NextResponse.json({ ok: true, projectId: project.id, t1SourceId });
   });
 }

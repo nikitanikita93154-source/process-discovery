@@ -13,17 +13,22 @@ export default async function MePage() {
   if (!session?.user?.id) redirect("/login");
   if (session.user.role === "OWNER") redirect("/dashboard");
 
-  const [test1, interview] = await Promise.all([
+  const [test1, activeInterview, completedInterview] = await Promise.all([
     db.test1Session.findUnique({ where: { userId: session.user.id } }),
     db.interviewSession.findFirst({
       where: { userId: session.user.id, status: { in: ["in_progress", "awaiting_confirmation"] } },
       orderBy: { startedAt: "desc" },
     }),
+    db.interviewSession.findFirst({
+      where: { userId: session.user.id, status: "completed" },
+      orderBy: { startedAt: "desc" },
+    }),
   ]);
 
   const t1Status = test1?.status ?? "not_started";
-  const t2Status = interview?.status ?? (test1 ? "not_started" : "not_started");
   const t1Done = t1Status === "completed";
+  const t2Status = activeInterview?.status ?? (completedInterview ? "completed" : "not_started");
+  const t2Done = t2Status === "completed";
 
   return (
     <div className="space-y-6">
@@ -57,7 +62,14 @@ export default async function MePage() {
             <CardDescription>AI-агент-интервью в чате, 10–15 минут</CardDescription>
           </CardHeader>
           <CardContent>
-            {t1Done ? (
+            {t2Done ? (
+              <div className="flex items-center justify-between">
+                <p className="text-sm text-emerald-600">✓ {ru.test1.completed}</p>
+                <Link href="/me/done" className="text-sm text-indigo-600 hover:underline">
+                  {ru.done.interviewSummary} →
+                </Link>
+              </div>
+            ) : t1Done ? (
               <Link href="/me/test2">
                 <Button>{t2Status === "in_progress" ? "Продолжить" : "Начать интервью"}</Button>
               </Link>

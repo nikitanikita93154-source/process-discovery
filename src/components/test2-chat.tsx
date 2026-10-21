@@ -121,6 +121,7 @@ export function Test2Chat({ initialSession }: { initialSession: Test2SessionStat
               agenda: string[];
               coverage: { topics: Record<string, string>; followUps: number };
               currentTopic?: string;
+              topicNumber?: number;
             };
             setSession((prev) => ({
               id: s.sessionId,
@@ -129,7 +130,7 @@ export function Test2Chat({ initialSession }: { initialSession: Test2SessionStat
               coverage: s.coverage ?? { topics: {}, followUps: 0 },
               transcript: prev?.transcript ?? [],
               currentTopic: s.currentTopic ?? prev?.currentTopic ?? "",
-              topicNumber: prev?.topicNumber ?? 1,
+              topicNumber: typeof s.topicNumber === "number" ? s.topicNumber : (prev?.topicNumber ?? 1),
               topicsTotal: s.agenda?.length ?? prev?.topicsTotal ?? 1,
               summary: prev?.summary ?? null,
             }));
