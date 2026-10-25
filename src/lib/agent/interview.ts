@@ -16,6 +16,8 @@ import type { Test1Answers } from "@/lib/schemas/test1";
 // со строгим JSON-выходом + zod-валидация.
 // ============================================================
 
+export const START_MARKER="[START]"
+
 export interface InterviewState {
   sessionId: string;
   userId: string;
@@ -38,7 +40,7 @@ export function currentTopicIndex(state: InterviewState): number {
 /** Все ли темы, кроме финального резюме, закрыты. */
 export function onlySummaryLeft(state: InterviewState): boolean {
   return state.agenda.every(
-    (t, i) => state.coverage.topics[t] !== "open" || t === "Резюме и подтверждение",
+    (t) => state.coverage.topics[t] !== "open" || t === TOPIC_SUMMARY,
   );
 }
 
@@ -102,7 +104,7 @@ function userContextPrompt(state: InterviewState, userMessage: string): string {
   const lastMessages = truncateTranscript(state.transcript, 12)
     .map((m, i) => `${m.role === "user" ? "Сотрудник" : "Ты"}: ${m.text}`)
     .join("\n");
-  const currentTopic = state.agenda[currentTopicIndex(state)] ?? "Резюме и подтверждение";
+  const currentTopic = state.agenda[currentTopicIndex(state)] ?? TOPIC_SUMMARY;
   return `Транскрипт (последние сообщения):
 ${lastMessages || "(пусто)"}
 
@@ -148,10 +150,6 @@ export function applyTurn(state: InterviewState, turn: AgentTurn): InterviewStat
     next.coverage.followUps = 0;
   }
 
-  // Финальная тема закрывается только через summarize
-  if (onlySummaryLeft(next) && next.coverage.topics["Резюме и подтверждение"] === "open" && turn.next_action !== "confirm") {
-    // оставляем открытой до summarize
-  }
 
   return next;
 }
@@ -199,7 +197,7 @@ export async function agentTurn(state: InterviewState, userMessage: string): Pro
     };
   }
 
-  const withUser: InterviewState = userMessage === "[START]"
+  const withUser: InterviewState = userMessage === START_MARKER
     ? state // не пишем служебное сообщение в транскрипт
     : {
         ...state,
@@ -240,7 +238,7 @@ export async function summarize(state: InterviewState): Promise<{ turn: AgentTur
     ...state,
     summary,
     status: "awaiting_confirmation",
-    coverage: { ...state.coverage, topics: { ...state.coverage.topics, "Резюме и подтверждение": "covered" } },
+    coverage: { ...state.coverage, topics: { ...state.coverage.topics, [TOPIC_SUMMARY]: "covered" } },
     transcript: [
       ...state.transcript,
       {
@@ -273,7 +271,7 @@ export function applySkip(state: InterviewState): InterviewState {
       { role: "user", text: "SKIP", ts: new Date().toISOString() },
     ],
   };
-  if (idx >= 0 && state.agenda[idx] !== "Резюме и подтверждение") {
+  if (idx >= 0 && state.agenda[idx] !== TOPIC_SUMMARY) {
     next.coverage.topics[state.agenda[idx]] = "skipped";
   }
   return next;

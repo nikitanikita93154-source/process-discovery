@@ -15,7 +15,9 @@ import {
   type TranscriptItem,
 } from "@/lib/schemas/test2";
 import { test1AnswersSchema, type Test1Answers } from "@/lib/schemas/test1";
-import { buildAgenda } from "@/lib/agent/agenda";
+import { buildAgenda,
+         TOPIC_SUMMARY
+} from "@/lib/agent/agenda";
 import {
   agentTurn,
   applyArtifact,
@@ -23,6 +25,7 @@ import {
   currentTopicIndex,
   summarize,
   timeLimitExceeded,
+  START_MARKER,
   type InterviewState,
 } from "@/lib/agent/interview";
 import { completeInterview } from "@/lib/agent/source";
@@ -117,7 +120,8 @@ export async function POST(req: Request) {
     }
 
     const t1row = await db.test1Session.findUnique({ where: { userId: user.id } });
-    const t1 = t1row?.answers ? (test1AnswersSchema.safeParse(t1row.answers).success ? test1AnswersSchema.parse(t1row.answers) : null) : null;
+    const parsed = t1row?.answers ? test1AnswersSchema.safeParse(t1row.answers) : null;
+    const t1 = parsed?.success ? parsed.data : null;
     const state0 = loadState(row, user.name ?? "Сотрудник", t1);
 
     const encoder = new TextEncoder();
@@ -133,7 +137,7 @@ export async function POST(req: Request) {
             status: s.status,
             agenda: s.agenda,
             coverage: s.coverage,
-            currentTopic: idx >= 0 ? s.agenda[idx] : "Резюме и подтверждение",
+            currentTopic: idx >= 0 ? s.agenda[idx] : TOPIC_SUMMARY,
             topicNumber: Math.min(idx + 1, s.agenda.length),
             topicsTotal: s.agenda.length,
             elapsedMs: Date.now() - new Date(s.startedAt).getTime(),
@@ -181,13 +185,10 @@ export async function POST(req: Request) {
           }
 
           // --- Обычный ход: сообщение / SKIP / artifact / [START] ---
-          let userMessage = "[START]";
+          let userMessage = START_MARKER;
           if (body.command === "SKIP") {
             state = applySkip(state);
             userMessage = "Сотрудник пропустил тему командой SKIP. Перейди к следующей открытой теме повестки.";
-            if (state.status === "awaiting_confirmation") {
-              // не бывает, но страховка
-            }
           } else if (body.artifact) {
             const res = applyArtifact(state, body.artifact);
             state = res.state;
