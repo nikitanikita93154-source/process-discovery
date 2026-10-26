@@ -14,6 +14,8 @@ export async function completeInterview(
   state: InterviewState,
   _projectId?: string | null,
 ): Promise<{ projectId: string; candidatesCreated?: number }> {
+  const t2 = await db.interviewSession.findUnique({where: { id: state.sessionId }});
+  if (t2?.status === "completed") throw new Error("Интервью уже завершено");
   const employee = await db.user.findUnique({ where: { id: state.userId } });
   const orgId = employee?.orgId;
   if (!orgId) throw new Error("Пользователь не найден");
