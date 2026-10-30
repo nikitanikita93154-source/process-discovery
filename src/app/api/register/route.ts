@@ -3,7 +3,7 @@ import bcrypt from "bcryptjs";
 import { db } from "@/lib/db";
 import { handle, parseBody, ApiError } from "@/lib/api";
 import { registerSchema } from "@/lib/schemas/auth";
-import { DEPARTMENT_DEFAULTS } from "@/lib/schemas/test1";
+import { DEPARTMENT_DEFAULTS } from "@/lib/content/org";
 import { randomBytes } from "crypto";
 
 function generateInviteCode(): string {
@@ -54,10 +54,9 @@ export async function POST(req: Request) {
       role = "OWNER";
     }
 
-    const user = await db.user.create({
+    await db.user.create({
       data: { orgId, email: data.email, name: data.name, role, passwordHash },
     });
-    await db.test1Session.create({ data: { userId: user.id, status: "not_started" } });
 
     return NextResponse.json({ ok: true, role });
   });

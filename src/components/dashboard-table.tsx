@@ -15,8 +15,7 @@ export interface DashboardRow {
   id: string;
   name: string;
   department: string;
-  t1Status: string;
-  t2Status: string;
+  status: string;
   date: string;
 }
 
@@ -28,7 +27,7 @@ export function DashboardTable({ rows }: { rows: DashboardRow[] }) {
   return (
     <Card>
       <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
-        <CardTitle>Прогресс тестирования</CardTitle>
+        <CardTitle>Прогресс интервью</CardTitle>
         {departments.length > 0 && (
           <div className="flex items-center gap-2 text-sm">
             <span className="text-zinc-400">{ru.common.department}:</span>
@@ -49,15 +48,14 @@ export function DashboardTable({ rows }: { rows: DashboardRow[] }) {
             <TR>
               <TH>{ru.common.employee}</TH>
               <TH>{ru.common.department}</TH>
-              <TH>Тест 1</TH>
-              <TH>Тест 2</TH>
+              <TH>{ru.nav.interview}</TH>
               <TH>{ru.common.date}</TH>
             </TR>
           </THead>
           <TBody>
             {filtered.length === 0 && (
               <TR>
-                <TD colSpan={5} className="text-center text-zinc-400">
+                <TD colSpan={4} className="text-center text-zinc-400">
                   {ru.common.empty}. Пригласите сотрудников на{" "}
                   <Link href="/dashboard/team" className="text-indigo-600 hover:underline">
                     странице команды
@@ -71,10 +69,7 @@ export function DashboardTable({ rows }: { rows: DashboardRow[] }) {
                 <TD className="font-medium">{e.name}</TD>
                 <TD>{e.department}</TD>
                 <TD>
-                  <Badge variant={statusBadgeVariant(e.t1Status)}>{statusLabel(e.t1Status)}</Badge>
-                </TD>
-                <TD>
-                  <Badge variant={statusBadgeVariant(e.t2Status)}>{statusLabel(e.t2Status)}</Badge>
+                  <Badge variant={statusBadgeVariant(e.status)}>{statusLabel(e.status)}</Badge>
                 </TD>
                 <TD>{e.date}</TD>
               </TR>
@@ -88,16 +83,14 @@ export function DashboardTable({ rows }: { rows: DashboardRow[] }) {
 
 export function OrgProgressCards({
   total,
-  t1Done,
-  t2Done,
+  interviewDone,
 }: {
   total: number;
-  t1Done: number;
-  t2Done: number;
+  interviewDone: number;
 }) {
   const pct = (n: number) => (total === 0 ? 0 : Math.round((n / total) * 100));
   return (
-    <div className="grid gap-4 sm:grid-cols-3">
+    <div className="grid gap-4 sm:grid-cols-2">
       <Card>
         <CardHeader className="pb-2">
           <CardTitle className="text-sm font-medium text-zinc-500">Сотрудников</CardTitle>
@@ -109,20 +102,11 @@ export function OrgProgressCards({
       </Card>
       <Card>
         <CardHeader className="pb-2">
-          <CardTitle className="text-sm font-medium text-zinc-500">Тест 1 пройден</CardTitle>
+          <CardTitle className="text-sm font-medium text-zinc-500">Интервью пройдено</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="text-3xl font-bold">{pct(t1Done)}%</div>
-          <Progress value={pct(t1Done)} className="mt-2" />
-        </CardContent>
-      </Card>
-      <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="text-sm font-medium text-zinc-500">Тест 2 пройден</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="text-3xl font-bold">{pct(t2Done)}%</div>
-          <Progress value={pct(t2Done)} className="mt-2" />
+          <div className="text-3xl font-bold">{pct(interviewDone)}%</div>
+          <Progress value={pct(interviewDone)} className="mt-2" />
         </CardContent>
       </Card>
     </div>

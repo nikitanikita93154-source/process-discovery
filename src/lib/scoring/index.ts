@@ -1,17 +1,16 @@
 import type { MapStep, ProcessMapJson } from "@/lib/schemas/map";
-import type { Test1Answers } from "@/lib/schemas/test1";
 import type { ScoredStep, Stp } from "@/lib/schemas/analysis";
 import type { ParsedSource } from "@/lib/schemas/source";
 import { MAX_SAVINGS_RATIO, SCORING_WEIGHTS } from "@/lib/scoring/weights";
 
 // ============================================================
 // Детерминированный скоринг шагов карты (без LLM).
-// hoursPerYear — из фактов Т1/Т2 (частота × время × 52);
-// при отсутствии — вызывающий код получает null и решает,
-// чем заполнить (оценка LLM с пометкой estimate).
+// hoursPerYear — из фактов интервью (частота × длительность × 52,
+// длительность по умолчанию — средняя); при отсутствии — вызывающий
+// код получает null и решает, чем заполнить (оценка LLM с пометкой estimate).
 // ============================================================
 
-/** Раз в неделю (оценка частот из Теста 1). */
+/** Раз в неделю (оценка частот из текстов интервью). */
 const FREQUENCY_PER_WEEK: Record<string, number> = {
   "несколько раз в день": 15,
   "раз в день": 5,
@@ -20,13 +19,8 @@ const FREQUENCY_PER_WEEK: Record<string, number> = {
   реже: 0.5,
 };
 
-/** Минут на выполнение (средние значения диапазонов Теста 1). */
-const DURATION_MINUTES: Record<string, number> = {
-  "<5 мин": 4,
-  "5–15 мин": 10,
-  "15–60 мин": 35,
-  ">60 мин": 75,
-};
+/** Средняя длительность шага, если в интервью не звучало точное время. */
+const AVG_STEP_MINUTES = 20;
 
 /** Доступность данных по системе (0–100). */
 const DATA_AVAILABILITY: Record<string, number> = {
@@ -41,41 +35,17 @@ const DATA_AVAILABILITY: Record<string, number> = {
 
 const norm = (s: string) => s.toLowerCase().replace(/[^a-zа-яё0-9]/gi, "");
 
-export interface T1TaskIndexEntry {
-  frequency: string;
-  duration: string;
-  systems: string[];
-  irritation: number;
-  regulated: string;
-}
-
-/** Индекс задач Теста 1 по нормализованному названию. */
-export function buildT1Index(answers: Test1Answers[]): Map<string, T1TaskIndexEntry> {
-  const index = new Map<string, T1TaskIndexEntry>();
-  for (const a of answers) {
-    for (const t of a.tasks) {
-      index.set(norm(t.title), {
-        frequency: t.frequency,
-        duration: t.duration,
-        systems: [...t.systems, ...(t.systemsCustom ? [t.systemsCustom] : [])],
-        irritation: t.irritation,
-        regulated: t.regulated,
-      });
-    }
-  }
-  return index;
-}
-
-/** Частота/объём из фактов интервью (шаги источника). */
+/** Частота/объём/система/длительность из фактов интервью (шаги источника). */
 export interface InterviewFactsIndex {
-  /** norm(имя шага) → { frequency, volume } из parsed источников */
-  entries: Map<string, { frequency?: string; volume?: string }>;
+  /** norm(имя шага) → { frequency, volume, system, duration } из parsed источников */
+  entries: Map<string, { frequency?: string; volume?: string; system?: string; duration?: string }>;
   hasTemplateTexts: boolean;
   hasGutDecisions: boolean;
 }
 
-export function buildInterviewIndex(sources: ParsedSource[], t1: Test1Answers[]): InterviewFactsIndex {
-  const entries = new Map<string, { frequency?: string; volume?: string }>();
+export function buildInterviewIndex(sources: ParsedSource[]): InterviewFactsIndex {
+  const entries = new Map<string, { frequency?: string; volume?: string; system?: string; duration?: string }>();
+  const gutDecisionTexts: string[] = [];
   for (const s of sources) {
     for (const step of s.candidateSteps) {
       const key = norm(step.name);
@@ -83,32 +53,44 @@ export function buildInterviewIndex(sources: ParsedSource[], t1: Test1Answers[])
       entries.set(key, {
         frequency: step.frequency ?? existing.frequency,
         volume: step.volume ?? existing.volume,
+        system: step.system ?? existing.system,
+        duration: step.duration ?? existing.duration,
       });
     }
+    gutDecisionTexts.push(...(s.gutDecisions ?? []));
   }
+
+  // Признаки «шаблонных текстов» и решений «на глазок» — из текстов
+  // резюме и фактов интервью, детерминированно
+  let interviewText = gutDecisionTexts.join("\n");
+  for (const s of sources) {
+    const interview = (s as {
+      interview?: {
+        summary?: { processes?: { name?: string; pain?: string }[]; open_questions?: string[] };
+        facts?: { type?: string; name?: string }[];
+      };
+    }).interview;
+    if (!interview?.summary) continue;
+    interviewText += "\n" + [
+      ...(interview.summary.processes ?? []).map((p) => `${p.name} ${p.pain ?? ""}`),
+      ...(interview.summary.open_questions ?? []),
+      ...(interview.facts ?? []).map((f) => `${f.type ?? ""} ${f.name ?? ""}`),
+    ].join("\n");
+  }
+  const lower = interviewText.toLowerCase();
   return {
     entries,
-    hasTemplateTexts: t1.some((a) => a.templateTexts?.frequency === "постоянно" || a.templateTexts?.frequency === "иногда"),
-    hasGutDecisions: t1.some((a) => a.gutDecisions?.hasGutDecisions === true),
+    // «копир» покрывает копирую/копируют/копирование/копировать
+    hasTemplateTexts: /шаблон|копир|однотипн|типовыс|по образцу/.test(lower),
+    // явные decision-факты надёжнее регэкспа по тексту
+    hasGutDecisions: gutDecisionTexts.length > 0 || /на глазок|по опыту|без данных|интуи/.test(lower),
   };
-}
-
-function matchT1(stepName: string, index: Map<string, T1TaskIndexEntry>): T1TaskIndexEntry | null {
-  const key = norm(stepName);
-  if (index.has(key)) return index.get(key)!;
-  // частичное совпадение названия
-  for (const [k, v] of index) {
-    if (k.includes(key) || key.includes(k)) return v;
-  }
-  return null;
 }
 
 function matchFrequencyText(text: string | undefined): number | null {
   if (!text) return null;
-  for (const [freq, perWeek] of Object.entries(FREQUENCY_PER_WEEK)) {
-    if (text.includes(freq) || norm(text).includes(norm(freq))) return perWeek;
-  }
-  // числовые формулировки из интервью: "5 раз в день" и т.п.
+  // числовые формулировки из интервью: "5 раз в день" и т.п. —
+  // проверяем ДО словаря, иначе «10 раз в день» матчится на «раз в день»
   const m = text.match(/(\d+(?:[.,]\d+)?)\s*раз\s*в\s*(день|неделю|месяц)/i);
   if (m) {
     const n = Number.parseFloat(m[1].replace(",", "."));
@@ -116,29 +98,43 @@ function matchFrequencyText(text: string | undefined): number | null {
     if (m[2].toLowerCase() === "неделю") return n;
     return n / 4;
   }
+  for (const [freq, perWeek] of Object.entries(FREQUENCY_PER_WEEK)) {
+    if (text.includes(freq) || norm(text).includes(norm(freq))) return perWeek;
+  }
   return null;
 }
 
-/** Часов в год из фактов (частота × время × 52). null → данных нет. */
+/** Минуты из текста длительности: «10–15 минут», «полчаса», «1,5 часа». */
+export function matchDurationText(text: string | undefined): number | null {
+  if (!text) return null;
+  const t = text.toLowerCase().replace(",", ".");
+  if (/полминуты/.test(t)) return 0.5;
+  if (/полчаса/.test(t)) return 30;
+  const rangeMin = t.match(/(\d+(?:\.\d+)?)\s*[–—-]\s*(\d+(?:\.\d+)?)\s*(?:мин|минут)/);
+  if (rangeMin) return (Number(rangeMin[1]) + Number(rangeMin[2])) / 2;
+  const rangeHour = t.match(/(\d+(?:\.\d+)?)\s*[–—-]\s*(\d+(?:\.\d+)?)\s*(?:ч|час)/);
+  if (rangeHour) return ((Number(rangeHour[1]) + Number(rangeHour[2])) / 2) * 60;
+  const min = t.match(/(\d+(?:\.\d+)?)\s*(?:мин|минут)/);
+  if (min) return Number(min[1]);
+  const hour = t.match(/(\d+(?:\.\d+)?)\s*(?:ч|час)/);
+  if (hour) return Number(hour[1]) * 60;
+  if (/час/.test(t)) return 60; // «час» без числа
+  return null;
+}
+
+/** Часов в год из фактов (частота × длительность × 52). null → данных нет. */
 export function hoursFromFacts(
   step: MapStep,
-  t1Index: Map<string, T1TaskIndexEntry>,
   interviewIndex: InterviewFactsIndex,
 ): { hours: number; estimate: boolean } | null {
-  const t1 = matchT1(step.name, t1Index);
-  if (t1) {
-    const perWeek = FREQUENCY_PER_WEEK[t1.frequency] ?? matchFrequencyText(t1.frequency);
-    const minutes = DURATION_MINUTES[t1.duration];
-    if (perWeek !== undefined && minutes) {
-      return { hours: (perWeek * minutes * 52) / 60, estimate: false };
-    }
-  }
   const fact = interviewIndex.entries.get(norm(step.name));
   if (fact) {
     const perWeek = matchFrequencyText(fact.frequency) ?? matchFrequencyText(fact.volume);
     if (perWeek !== null) {
-      // из интервью известна частота; длительность берём среднюю по диапазонам Т1, помечаем как факт
-      return { hours: (perWeek * 20 * 52) / 60, estimate: false };
+      // из интервью известна частота; длительность — из факта,
+      // если звучала, иначе средняя константа
+      const minutes = matchDurationText(fact.duration) ?? AVG_STEP_MINUTES;
+      return { hours: (perWeek * minutes * 52) / 60, estimate: false };
     }
   }
   return null;
@@ -183,7 +179,6 @@ export function suggestTech(
 
 export interface ScoreStepInput {
   map: ProcessMapJson;
-  t1Index: Map<string, T1TaskIndexEntry>;
   interviewIndex: InterviewFactsIndex;
   hourlyRate: number;
   /** Оценки LLM для шагов без фактов (norm name → часов/год). */
@@ -192,14 +187,14 @@ export interface ScoreStepInput {
 
 /** Полный расчёт: часы, стоимость, automationScore, технологии, приоритет, STP. */
 export function scoreMap(input: ScoreStepInput): { steps: ScoredStep[]; totals: { hoursPerYear: number; costPerYear: number }; stp: Stp } {
-  const { map, t1Index, interviewIndex, hourlyRate, llmEstimates } = input;
+  const { map, interviewIndex, hourlyRate, llmEstimates } = input;
 
   const steps: ScoredStep[] = [];
   const hoursList: { step: MapStep; hours: number; estimate: boolean }[] = [];
 
   for (const stage of map.stages) {
     for (const step of stage.steps) {
-      const fromFacts = hoursFromFacts(step, t1Index, interviewIndex);
+      const fromFacts = hoursFromFacts(step, interviewIndex);
       let hours: number;
       let estimate: boolean;
       if (fromFacts) {
@@ -219,12 +214,11 @@ export function scoreMap(input: ScoreStepInput): { steps: ScoredStep[]; totals: 
   for (let i = 0; i < hoursList.length; i++) {
     const { step, hours, estimate } = hoursList[i];
     const stage = map.stages.find((s) => s.steps.some((x) => x.id === step.id))!;
-    const t1 = matchT1(step.name, t1Index);
 
-    const perWeek = t1 ? (FREQUENCY_PER_WEEK[t1.frequency] ?? 3) : (matchFrequencyText(interviewIndex.entries.get(norm(step.name))?.frequency) ?? 3);
+    const perWeek = matchFrequencyText(interviewIndex.entries.get(norm(step.name))?.frequency) ?? 3;
     const repetitiveness = Math.min(100, Math.round((perWeek / 15) * 100));
 
-    const regulatedBonus = t1 ? (t1.regulated === "да" ? 40 : t1.regulated === "не знаю" ? 20 : 5) : 20;
+    const regulatedBonus = 20; // из интервью регламентированность не извлекается — нейтрально
     const formalizability = Math.min(
       100,
       (step.decisions.length > 0 ? 40 : 20) + regulatedBonus + (step.system ? 20 : 0),
@@ -232,10 +226,10 @@ export function scoreMap(input: ScoreStepInput): { steps: ScoredStep[]; totals: 
 
     const volume = Math.round((hours / maxHours) * 100);
 
-    const systems = t1?.systems ?? [];
-    const dataAvailability = dataAvailabilityScore([step.system, ...systems].filter(Boolean));
+    const factSystem = interviewIndex.entries.get(norm(step.name))?.system;
+    const dataAvailability = dataAvailabilityScore([step.system, factSystem].filter(Boolean) as string[]);
 
-    const pain = t1 ? ((t1.irritation - 1) / 4) * 80 + 20 : 40;
+    const pain = 40; // нейтрально: из интервью боль учитывается в тексте резюме, не в скоринге шага
 
     const automationScore = Math.round(
       repetitiveness * SCORING_WEIGHTS.repetitiveness +

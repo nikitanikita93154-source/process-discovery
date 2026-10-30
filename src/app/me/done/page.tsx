@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import { ru } from "@/lib/content/ru";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import type { InterviewSummary } from "@/lib/schemas/test2";
+import type { InterviewSummary } from "@/lib/schemas/interview";
 
 export default async function DonePage() {
   const session = await auth();
@@ -51,16 +51,8 @@ export default async function DonePage() {
                 </div>
               </div>
             ))}
-            {summary.open_questions.length > 0 && (
-              <div>
-                <h3 className="text-sm font-semibold">{ru.test2.confirmOpenQuestions}</h3>
-                <ul className="mt-1 list-disc space-y-1 pl-5 text-sm text-zinc-600">
-                  {summary.open_questions.map((q, i) => (
-                    <li key={i}>{q}</li>
-                  ))}
-                </ul>
-              </div>
-            )}
+            {/* open_questions сознательно не показываем сотруднику:
+                это вопросы для владельца/аналитика, хранятся в БД */}
           </CardContent>
         </Card>
       )}

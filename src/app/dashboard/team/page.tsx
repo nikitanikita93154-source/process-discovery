@@ -1,6 +1,5 @@
 import { db } from "@/lib/db";
 import { requirePageOwner } from "@/lib/page-guards";
-import { ru } from "@/lib/content/ru";
 import { TeamClient } from "@/components/team-client";
 import { OrgSettings } from "@/components/org-settings";
 
@@ -11,7 +10,7 @@ export default async function TeamPage() {
     db.organization.findUnique({ where: { id: owner.orgId } }),
     db.user.findMany({
       where: { orgId: owner.orgId, role: "EMPLOYEE" },
-      include: { test1: true, interviews: true },
+      include: { interviews: true },
       orderBy: { createdAt: "asc" },
     }),
   ]);
@@ -25,8 +24,7 @@ export default async function TeamPage() {
           id: e.id,
           name: e.name,
           email: e.email,
-          t1: e.test1?.status === "completed" ? "✓" : (e.test1?.status ?? "—"),
-          t2: e.interviews.some((i) => i.status === "completed") ? "✓" : "—",
+          interview: e.interviews.some((i) => i.status === "completed") ? "✓" : "—",
         }))}
       />
       <OrgSettings

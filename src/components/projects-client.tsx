@@ -23,11 +23,12 @@ export interface ProjectRow {
   createdAt: string;
   sourcesCount: number;
   conflictsCount: number;
+  /** Сотрудники, чьи интервью описали процесс проекта. */
+  employees: string[];
 }
 
 const ORIGIN_LABELS: Record<string, string> = {
   interview: ru.candidates.originInterview,
-  t1: ru.candidates.originT1,
   document: ru.candidates.originDocument,
 };
 
@@ -44,8 +45,6 @@ export function ProjectsClient({
   const [description, setDescription] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [discovering, setDiscovering] = useState(false);
-  const [discoverMsg, setDiscoverMsg] = useState<string | null>(null);
 
   const decide = async (id: string, action: "accept" | "dismiss") => {
     setBusy(true);
@@ -57,25 +56,6 @@ export function ProjectsClient({
     setBusy(false);
     if (res.ok) router.refresh();
     else setError(ru.errors.generic);
-  };
-
-  const discoverT1 = async () => {
-    setDiscovering(true);
-    setDiscoverMsg(null);
-    try {
-      const res = await fetch("/api/candidates", { method: "POST" });
-      const data = (await res.json()) as { created?: number; clusters?: number; error?: string };
-      setDiscoverMsg(
-        res.ok
-          ? `${ru.candidates.discovered}: ${data.clusters ?? 0}, ${ru.candidates.created}: ${data.created ?? 0}`
-          : (data.error ?? ru.errors.generic),
-      );
-      router.refresh();
-    } catch {
-      setDiscoverMsg(ru.errors.network);
-    } finally {
-      setDiscovering(false);
-    }
   };
 
   const create = async () => {
@@ -110,16 +90,11 @@ export function ProjectsClient({
           <p className="text-sm text-zinc-500">{ru.projects.subtitle}</p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" onClick={() => void discoverT1()} disabled={discovering}>
-            {discovering ? ru.candidates.discovering : ru.candidates.discoverT1}
-          </Button>
           {!showForm && (
             <Button onClick={() => setShowForm(true)}>{ru.projects.create}</Button>
           )}
         </div>
       </div>
-
-      {discoverMsg && <p className="text-sm text-indigo-600">{discoverMsg}</p>}
 
       {/* Найденные процессы (кандидаты) */}
       {candidates.length > 0 && (
@@ -215,6 +190,11 @@ export function ProjectsClient({
                     <span>
                       {p.sourcesCount} {ru.projects.sourcesCount}
                     </span>
+                    {p.employees.length > 0 && (
+                      <span title={ru.projects.employeesHint}>
+                        👷 {ru.projects.employees}: {p.employees.join(", ")}
+                      </span>
+                    )}
                     {p.conflictsCount > 0 && (
                       <Badge variant="warning">⚠ {p.conflictsCount} конфликтов</Badge>
                     )}

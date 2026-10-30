@@ -1,41 +1,34 @@
 /**
  * Seed: демо-организация, владелец demo@demo.io / demo1234,
- * 3 сотрудника с заполненным Тестом 1, один проект с источниками,
- * картой и отчётом (карта/отчёт добавляются в последующих фазах).
+ * 3 сотрудника с завершёнными интервью, один проект с источниками,
+ * картой и отчётом.
  *
  * Запуск: pnpm seed
  */
 import { PrismaClient } from "@prisma/client";
 import bcrypt from "bcryptjs";
-import { DEPARTMENT_DEFAULTS, type Test1Answers } from "../src/lib/schemas/test1";
-import { buildInterviewIndex, buildT1Index, scoreMap } from "../src/lib/scoring";
+import { DEPARTMENT_DEFAULTS } from "../src/lib/content/org";
+import { buildInterviewIndex, scoreMap } from "../src/lib/scoring";
 
 const db = new PrismaClient();
 
-const t1 = (over: Partial<Test1Answers> = {}): Test1Answers => ({
-  passport: {
-    position: "Специалист",
-    department: "Операции",
-    experience: "1–3 года",
-  },
-  tasks: [
-    {
-      title: "Обработка входящих заявок",
-      frequency: "несколько раз в день",
-      duration: "15–60 мин",
-      systems: ["почта", "CRM"],
-      irritation: 4,
-      regulated: "нет",
-    },
-  ],
-  expectations: { waitingFrequency: 4, waitingFor: "согласования руководителя", behaviorWhileWaiting: "переключаюсь на другое" },
-  mistakes: { tasksWithErrors: "обработка заявок", errorFrequency: "несколько раз в неделю", causes: ["нет данных", "непонятные требования"] },
-  gutDecisions: { hasGutDecisions: true, example: "одобряю скидку по опыту, без анализа маржи" },
-  templateTexts: { frequency: "постоянно", example: "ответ клиенту о статусе заказа" },
-  aiAttitude: { attitudeScore: 4, fears: ["ошибки"], genieTask: "черновики ответов клиентам" },
-  openQuestion: { wasteOfTime: "перенос данных из почты в CRM" },
-  ...over,
-});
+type DemoProcess = {
+  name: string;
+  steps: string[];
+  actors: string[];
+  systems: string[];
+  volume: string;
+  pain: string;
+};
+
+type DemoEmployee = {
+  email: string;
+  name: string;
+  position: string;
+  department: string;
+  daysAgo: number;
+  processes: DemoProcess[];
+};
 
 async function main() {
   console.log("Seeding…");
@@ -53,7 +46,6 @@ async function main() {
       db.conflict.deleteMany({ where: { project: { orgId: oldOrg.id } } }),
       db.source.deleteMany({ where: { project: { orgId: oldOrg.id } } }),
       db.interviewSession.deleteMany({ where: { user: { orgId: oldOrg.id } } }),
-      db.test1Session.deleteMany({ where: { user: { orgId: oldOrg.id } } }),
       db.project.deleteMany({ where: { orgId: oldOrg.id } }),
       db.user.deleteMany({ where: { orgId: oldOrg.id } }),
       db.organization.delete({ where: { id: oldOrg.id } }),
@@ -69,105 +61,93 @@ async function main() {
     },
   });
 
-  const owner = await db.user.create({
+  await db.user.create({
     data: { orgId: org.id, email: "demo@demo.io", name: "Демо Владелец", role: "OWNER", passwordHash },
   });
-  await db.test1Session.create({ data: { userId: owner.id, status: "not_started" } });
 
-  const employees = [
+  const employees: DemoEmployee[] = [
     {
       email: "anna@demo.io",
       name: "Анна Смирнова",
-      answers: t1({
-        passport: { position: "Менеджер по продажам", department: "Продажи", experience: "3+ лет" },
-        tasks: [
-          {
-            title: "Подготовка коммерческих предложений",
-            frequency: "несколько раз в день",
-            duration: "15–60 мин",
-            systems: ["Excel", "почта", "CRM"],
-            irritation: 4,
-            regulated: "нет",
-          },
-          {
-            title: "Проверка дебиторки перед отгрузкой",
-            frequency: "раз в день",
-            duration: "15–60 мин",
-            systems: ["1С", "Excel"],
-            irritation: 5,
-            regulated: "да",
-          },
-        ],
-        aiAttitude: { attitudeScore: 5, fears: ["ничего не боюсь"], genieTask: "сборка КП из шаблона по данным CRM" },
-      }),
+      position: "Менеджер по продажам",
+      department: "Продажи",
+      daysAgo: 3,
+      processes: [
+        {
+          name: "Обработка заявки клиента",
+          steps: [
+            "Получение заявки",
+            "Проверка в CRM",
+            "Подготовка КП",
+            "Согласование скидки",
+            "Проверка дебиторки",
+            "Выставление счёта",
+          ],
+          actors: ["Менеджер", "Руководитель"],
+          systems: ["почта", "CRM", "Excel", "1С", "мессенджеры"],
+          volume: "10–15 заявок в день",
+          pain: "ручной перенос данных между системами и ожидание согласования скидки",
+        },
+      ],
     },
     {
       email: "boris@demo.io",
       name: "Борис Петров",
-      answers: t1({
-        passport: { position: "Бухгалтер", department: "Финансы", experience: "3+ лет" },
-        tasks: [
-          {
-            title: "Сверка счетов с контрагентами",
-            frequency: "несколько раз в неделю",
-            duration: ">60 мин",
-            systems: ["1С", "почта", "бумага"],
-            irritation: 5,
-            regulated: "да",
-          },
-          {
-            title: "Формирование актов сверки",
-            frequency: "раз в неделю",
-            duration: "15–60 мин",
-            systems: ["1С", "почта"],
-            irritation: 3,
-            regulated: "да",
-          },
-          {
-            title: "Разнесение банковских выписок",
-            frequency: "раз в день",
-            duration: "15–60 мин",
-            systems: ["1С", "Excel"],
-            irritation: 4,
-            regulated: "да",
-          },
-        ],
-        expectations: { waitingFrequency: 5, waitingFor: "подписи директора", behaviorWhileWaiting: "жду, ничего не делаю" },
-        aiAttitude: { attitudeScore: 3, fears: ["заменят", "сложно"], genieTask: "разнесение выписок" },
-      }),
+      position: "Бухгалтер",
+      department: "Финансы",
+      daysAgo: 3,
+      processes: [
+        {
+          name: "Сверка счетов с контрагентами",
+          steps: ["Выгрузка счетов из 1С", "Сверка с контрагентом по почте", "Формирование акта сверки", "Отправка на подпись"],
+          actors: ["Бухгалтер", "Директор"],
+          systems: ["1С", "почта", "бумага"],
+          volume: "несколько раз в неделю, >60 мин на один раз",
+          pain: "ожидание подписи директора и ручной разнос выписок",
+        },
+      ],
     },
     {
       email: "vera@demo.io",
       name: "Вера Козлова",
-      answers: t1({
-        passport: { position: "Логист", department: "Логистика", experience: "6–12 мес" },
-        tasks: [
-          {
-            title: "Отслеживание доставки и уведомление клиентов",
-            frequency: "несколько раз в день",
-            duration: "5–15 мин",
-            systems: ["мессенджеры", "почта", "Excel"],
-            irritation: 3,
-            regulated: "нет",
-          },
-        ],
-        templateTexts: { frequency: "постоянно", example: "письмо «ваш заказ в пути»" },
-        aiAttitude: { attitudeScore: 4, fears: ["сложно"], genieTask: "автоуведомления клиентам" },
-      }),
+      position: "Логист",
+      department: "Логистика",
+      daysAgo: 2,
+      processes: [
+        {
+          name: "Отслеживание доставки и уведомление клиентов",
+          steps: ["Проверка статуса доставки", "Составление уведомления", "Рассылка клиентам"],
+          actors: ["Логист"],
+          systems: ["мессенджеры", "почта", "Excel"],
+          volume: "несколько раз в день по 5–15 мин",
+          pain: "однотипные письма «ваш заказ в пути» вручную",
+        },
+      ],
     },
   ];
 
+  const userIds = new Map<string, string>();
   for (const e of employees) {
     const u = await db.user.create({
       data: { orgId: org.id, email: e.email, name: e.name, role: "EMPLOYEE", passwordHash },
     });
-    await db.test1Session.create({
+    userIds.set(e.email, u.id);
+    const base = Date.now() - e.daysAgo * 24 * 3600 * 1000;
+    await db.interviewSession.create({
       data: {
         userId: u.id,
         status: "completed",
-        startedAt: new Date(Date.now() - 3 * 24 * 3600 * 1000),
-        completedAt: new Date(Date.now() - 3 * 24 * 3600 * 1000 + 6 * 60 * 1000),
-        answers: e.answers,
+        startedAt: new Date(base),
+        endedAt: new Date(base + 12 * 60 * 1000),
+        agenda: [],
+        coverage: { topics: {}, followUps: 0 },
+        transcript: [],
+        facts: [],
+        summary: {
+          employee: { position: e.position, department: e.department },
+          processes: e.processes,
+          open_questions: [],
+        },
       },
     });
   }
@@ -183,7 +163,6 @@ async function main() {
   });
 
   // Источник-интервью (Анна)
-  const anna = await db.user.findUnique({ where: { email: "anna@demo.io" } });
   const interviewSource = await db.source.create({
     data: {
       projectId: project.id,
@@ -202,19 +181,11 @@ async function main() {
         actors: ["Менеджер", "Руководитель", "Бухгалтер"],
         rules: [{ text: "Скидки до 10% менеджер согласовывает сам, свыше — с руководителем", source: "msg#9" }],
         exceptions: ["Клиент с просроченной дебиторкой — отгрузка только после оплаты"],
-        citations: [{ ref: "Интервью Анны Смирновой, темы: дип-дайв задач, передачи" }],
+        citations: [{ ref: "Интервью Анны Смирновой" }],
         interview: {
           summary: {
-            processes: [
-              {
-                name: "Обработка заявки клиента",
-                steps: ["Получение заявки", "Проверка в CRM", "Подготовка КП", "Согласование скидки", "Проверка дебиторки", "Выставление счёта"],
-                actors: ["Менеджер", "Руководитель"],
-                systems: ["почта", "CRM", "Excel", "1С", "мессенджеры"],
-                volume: "10–15 заявок в день",
-                pain: "ручной перенос данных между системами и ожидание согласования скидки",
-              },
-            ],
+            employee: { position: "Менеджер по продажам", department: "Продажи" },
+            processes: employees[0].processes,
             open_questions: ["Какой порог скидки фактически действует?"],
           },
         },
@@ -302,15 +273,9 @@ async function main() {
   });
 
   // Отчёт анализа — детерминированный скоринг без LLM
-  const t1AnswersList = employees.map((e) => e.answers);
-  const t1Index = buildT1Index(t1AnswersList);
-  const interviewIndex = buildInterviewIndex(
-    [interviewSource.parsedJson as never],
-    t1AnswersList,
-  );
+  const interviewIndex = buildInterviewIndex([interviewSource.parsedJson as never]);
   const { steps, totals, stp } = scoreMap({
     map: mapJson as never,
-    t1Index,
     interviewIndex,
     hourlyRate: 50,
     llmEstimates: new Map(),
@@ -330,7 +295,7 @@ async function main() {
 
   // Follow-up вопрос из комментария (демо очереди)
   const annaComment = await db.comment.create({
-    data: { mapId: map.id, nodeId: "step-2-2", authorId: owner.id, body: "Уточнить реальный порог согласования скидки у руководителя" },
+    data: { mapId: map.id, nodeId: "step-2-2", authorId: (await db.user.findUnique({ where: { email: "demo@demo.io" } }))!.id, body: "Уточнить реальный порог согласования скидки у руководителя" },
   });
   await db.followUpQuestion.create({
     data: { projectId: project.id, text: "Уточнить реальный порог согласования скидки у руководителя", status: "open", sourceCommentId: annaComment.id },

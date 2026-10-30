@@ -2,26 +2,26 @@ import { db } from "@/lib/db";
 import { requirePageOwner } from "@/lib/page-guards";
 import { ru } from "@/lib/content/ru";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TBody, TD, TH, THead, TR } from "@/components/ui/table";
 import { formatHours, formatMoney } from "@/lib/utils";
 import type { AnalysisScores } from "@/lib/schemas/analysis";
-import type { Test1Answers } from "@/lib/schemas/test1";
+import type { InterviewSummary } from "@/lib/schemas/interview";
 import { ExportButtons } from "@/components/export-buttons";
 
 export default async function AnalyticsPage() {
   const owner = await requirePageOwner();
 
-  const [reports, t1Rows] = await Promise.all([
+  const [reports, interviews] = await Promise.all([
     db.analysisReport.findMany({
       where: { map: { project: { orgId: owner.orgId } } },
       orderBy: { createdAt: "desc" },
       include: { map: { include: { project: { select: { title: true } } } } },
     }),
-    db.test1Session.findMany({
+    db.interviewSession.findMany({
       where: { status: "completed", user: { orgId: owner.orgId } },
       include: { user: { select: { name: true, email: true } } },
+      orderBy: { startedAt: "asc" },
     }),
   ]);
 
@@ -39,28 +39,25 @@ export default async function AnalyticsPage() {
   });
   allSteps.sort((a, b) => b.automationScore - a.automationScore);
 
-  // Тепловая карта по отделам (из Т1)
-  const byDept = new Map<string, { employees: number; irritationSum: number; irritationCount: number; tasks: number }>();
-  const people = t1Rows.map((r) => {
-    const a = r.answers as Test1Answers | null;
-    const dept = a?.passport?.department ?? "—";
-    const entry = byDept.get(dept) ?? { employees: 0, irritationSum: 0, irritationCount: 0, tasks: 0 };
-    entry.employees++;
-    entry.tasks += a?.tasks?.length ?? 0;
-    for (const t of a?.tasks ?? []) {
-      entry.irritationSum += t.irritation;
-      entry.irritationCount++;
-    }
-    byDept.set(dept, entry);
+  // Люди и отделы — из резюме завершённых интервью
+  const people = interviews.map((r) => {
+    const summary = r.summary as InterviewSummary | null;
     return {
       name: r.user.name,
-      department: dept,
-      position: a?.passport?.position ?? "—",
-      attitude: a?.aiAttitude?.attitudeScore ?? null,
-      fears: a?.aiAttitude?.fears ?? [],
-      genieTask: a?.aiAttitude?.genieTask ?? "",
+      email: r.user.email,
+      department: summary?.employee?.department || "—",
+      position: summary?.employee?.position || "—",
+      processes: summary?.processes ?? [],
     };
   });
+
+  const byDept = new Map<string, { employees: number; processes: number }>();
+  for (const p of people) {
+    const entry = byDept.get(p.department) ?? { employees: 0, processes: 0 };
+    entry.employees++;
+    entry.processes += p.processes.length;
+    byDept.set(p.department, entry);
+  }
 
   const heatColor = (value: number, max: number): string => {
     const ratio = max === 0 ? 0 : value / max;
@@ -69,12 +66,7 @@ export default async function AnalyticsPage() {
     if (ratio >= 0.25) return "bg-yellow-50 text-yellow-800";
     return "bg-emerald-50 text-emerald-800";
   };
-
-  const maxIrritation = Math.max(
-    ...[...byDept.values()].map((d) => (d.irritationCount > 0 ? d.irritationSum / d.irritationCount : 0)),
-    1,
-  );
-  const maxTasks = Math.max(...[...byDept.values()].map((d) => d.tasks), 1);
+  const maxProcesses = Math.max(...[...byDept.values()].map((d) => d.processes), 1);
 
   const hasData = allSteps.length > 0 || people.length > 0;
 
@@ -133,25 +125,19 @@ export default async function AnalyticsPage() {
             <CardDescription>{ru.analytics.heatmapHint}</CardDescription>
           </CardHeader>
           <CardContent className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-            {[...byDept.entries()].map(([dept, d]) => {
-              const avgIrr = d.irritationCount > 0 ? d.irritationSum / d.irritationCount : 0;
-              return (
-                <div key={dept} className="rounded-lg border border-zinc-200 p-3">
-                  <div className="font-medium">{dept}</div>
-                  <div className="mt-2 flex gap-2">
-                    <span className={`rounded px-2 py-1 text-xs ${heatColor(avgIrr, maxIrritation)}`}>
-                      ср. раздражение {avgIrr.toFixed(1)}
-                    </span>
-                    <span className={`rounded px-2 py-1 text-xs ${heatColor(d.tasks, maxTasks)}`}>
-                      задач {d.tasks}
-                    </span>
-                    <span className="rounded bg-zinc-100 px-2 py-1 text-xs text-zinc-600">
-                      сотр. {d.employees}
-                    </span>
-                  </div>
+            {[...byDept.entries()].map(([dept, d]) => (
+              <div key={dept} className="rounded-lg border border-zinc-200 p-3">
+                <div className="font-medium">{dept}</div>
+                <div className="mt-2 flex gap-2">
+                  <span className={`rounded px-2 py-1 text-xs ${heatColor(d.processes, maxProcesses)}`}>
+                    {ru.analytics.processesColumn.toLowerCase()} {d.processes}
+                  </span>
+                  <span className="rounded bg-zinc-100 px-2 py-1 text-xs text-zinc-600">
+                    сотр. {d.employees}
+                  </span>
                 </div>
-              );
-            })}
+              </div>
+            ))}
           </CardContent>
         </Card>
       )}
@@ -160,37 +146,29 @@ export default async function AnalyticsPage() {
         <Card>
           <CardHeader className="pb-0">
             <CardTitle>{ru.analytics.peopleReport}</CardTitle>
-            <CardDescription>
-              Из Блока 6 Теста 1 (в скоринг не входит) — карта для управления изменениями
-            </CardDescription>
+            <CardDescription>Из завершённых интервью</CardDescription>
           </CardHeader>
           <CardContent className="p-0">
             <Table>
               <THead>
                 <TR>
                   <TH>{ru.common.employee}</TH>
-                  <TH>{ru.common.department}</TH>
-                  <TH>{ru.analytics.attitudeColumn}</TH>
-                  <TH>{ru.analytics.fearsColumn}</TH>
-                  <TH>{ru.analytics.genieColumn}</TH>
+                  <TH>{ru.analytics.positionColumn}</TH>
+                  <TH>{ru.analytics.departmentColumn}</TH>
+                  <TH className="text-right">{ru.analytics.processesColumn}</TH>
+                  <TH>{ru.analytics.painsColumn}</TH>
                 </TR>
               </THead>
               <TBody>
                 {people.map((p) => (
-                  <TR key={p.name}>
+                  <TR key={p.email}>
                     <TD className="font-medium">{p.name}</TD>
+                    <TD>{p.position}</TD>
                     <TD>{p.department}</TD>
-                    <TD>
-                      {p.attitude !== null ? (
-                        <Badge variant={p.attitude >= 4 ? "success" : p.attitude >= 3 ? "default" : "destructive"}>
-                          {p.attitude}/5
-                        </Badge>
-                      ) : (
-                        "—"
-                      )}
+                    <TD className="text-right">{p.processes.length}</TD>
+                    <TD className="max-w-[320px] text-xs text-zinc-600">
+                      {p.processes.map((x) => x.pain).filter(Boolean).join("; ") || "—"}
                     </TD>
-                    <TD className="text-xs text-zinc-600">{p.fears.join(", ") || "—"}</TD>
-                    <TD className="max-w-[240px] text-xs text-zinc-600">{p.genieTask || "—"}</TD>
                   </TR>
                 ))}
               </TBody>

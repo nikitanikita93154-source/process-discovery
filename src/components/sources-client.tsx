@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { statusBadgeVariant } from "@/lib/status";
 import type { ParsedSource } from "@/lib/schemas/source";
+import type { ContributingInterview } from "@/lib/agent/employees";
 
 export interface SourceRow {
   id: string;
@@ -28,10 +29,13 @@ export interface ConflictRow {
 export function SourcesClient({
   projectId,
   sources,
+  contributors,
   conflicts,
 }: {
   projectId: string;
   sources: SourceRow[];
+  /** Интервью, из которых берётся процесс проекта (включая внешние). */
+  contributors: ContributingInterview[];
   conflicts: ConflictRow[];
 }) {
   const router = useRouter();
@@ -87,6 +91,31 @@ export function SourcesClient({
 
   return (
     <div className="space-y-6">
+      {/* Из чьих интервью берётся процесс (включая внешние источники) */}
+      {contributors.length > 0 && (
+        <Card className="border-indigo-200 bg-indigo-50/40">
+          <CardContent className="p-4">
+            <div className="text-sm font-semibold text-indigo-800">{ru.project.contributorsTitle}</div>
+            <div className="mt-2 space-y-1.5 text-sm">
+              {contributors.map((c) => (
+                <div key={c.sourceId} className="flex flex-wrap items-baseline gap-x-2">
+                  <span className="font-medium">{c.employeeName}</span>
+                  {c.direct ? (
+                    <Badge variant="secondary">{ru.project.contributorDirect}</Badge>
+                  ) : (
+                    <span className="text-xs text-zinc-500">
+                      {ru.project.contributorExternal}
+                      {c.hostProjectTitle ? ` «${c.hostProjectTitle}»` : ""}
+                      {c.matchedProcess ? ` — «${c.matchedProcess}»` : ""}
+                    </span>
+                  )}
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Конфликты */}
       {conflicts.length > 0 && (
         <Card className="border-amber-300">
@@ -163,8 +192,8 @@ export function SourcesClient({
             <div key={s.id} className="rounded-lg border border-zinc-200 p-3">
               <div className="flex items-center justify-between gap-2">
                 <div className="flex flex-wrap items-center gap-2">
-                  <Badge variant={s.type === "interview" ? "default" : s.type === "test1" ? "outline" : "secondary"}>
-                    {s.type === "interview" ? ru.project.typeInterview : s.type === "test1" ? ru.project.typeTest1 : ru.project.typeDocument}
+                  <Badge variant={s.type === "interview" ? "default" : "secondary"}>
+                    {s.type === "interview" ? ru.project.typeInterview : ru.project.typeDocument}
                   </Badge>
                   <span className="font-medium">{s.name}</span>
                   <Badge variant={statusBadgeVariant(s.status)}>{s.status}</Badge>

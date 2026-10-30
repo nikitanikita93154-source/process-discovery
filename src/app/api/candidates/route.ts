@@ -2,9 +2,6 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { handle } from "@/lib/api";
 import { requireApiOwner } from "@/lib/guards";
-import { discoverFromT1 } from "@/lib/agent/routing";
-
-export const maxDuration = 180;
 
 /** GET /api/candidates — список предложенных процессов (status=proposed). */
 export async function GET() {
@@ -24,14 +21,5 @@ export async function GET() {
         createdAt: c.createdAt.toISOString(),
       })),
     });
-  });
-}
-
-/** POST /api/candidates — запустить поиск процессов в анкетах Теста 1 (кластеризация). */
-export async function POST() {
-  return handle(async () => {
-    const owner = await requireApiOwner();
-    const result = await discoverFromT1(owner.orgId);
-    return NextResponse.json(result);
   });
 }

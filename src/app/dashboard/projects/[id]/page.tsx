@@ -8,13 +8,46 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { SourcesClient } from "@/components/sources-client";
 import { MapClient } from "@/components/map-client";
 import { AnalysisClient } from "@/components/analysis-client";
-import { ProjectT1Panel, matchT1ToSteps } from "@/components/project-t1-panel";
 import { ProjectParticipants } from "@/components/project-participants";
 import { statusBadgeVariant, statusLabel } from "@/lib/status";
+import { employeesForProject, contributingInterviews } from "@/lib/agent/employees";
 import type { ParsedSource } from "@/lib/schemas/source";
 import type { ProcessMapJson } from "@/lib/schemas/map";
 import type { AnalysisScores, Swot } from "@/lib/schemas/analysis";
-import type { Test1Answers } from "@/lib/schemas/test1";
+import type { Fact, InterviewSummary } from "@/lib/schemas/interview";
+
+const norm = (s: string) => s.toLowerCase().replace(/[^a-zа-яё0-9]/gi, "");
+
+/** Последнее завершённое интервью сотрудника (сводные данные). */
+interface InterviewBrief {
+  status: string;
+  summary: InterviewSummary | null;
+  facts: Fact[];
+}
+
+function latestCompleted(interviews: InterviewBrief[]): InterviewBrief | null {
+  return interviews.find((i) => i.status === "completed") ?? null;
+}
+
+function interviewStatus(interviews: { status: string }[]): string {
+  return interviews.some((i) => i.status === "completed")
+    ? "completed"
+    : interviews.some((i) => i.status === "in_progress" || i.status === "awaiting_confirmation")
+      ? "in_progress"
+      : "not_started";
+}
+
+/** Совпадают ли задачи/шаги из фактов интервью сотрудника с шагами проекта. */
+function factsMatchStepNames(facts: Fact[], stepNames: string[]): boolean {
+  const keys = stepNames.map(norm).filter(Boolean);
+  if (keys.length === 0) return false;
+  return facts
+    .filter((f) => f.type === "task" || f.type === "step")
+    .some((f) => {
+      const n = norm(f.name);
+      return keys.some((k) => k === n || (n.length >= 6 && k.includes(n)) || (k.length >= 6 && n.includes(k)));
+    });
+}
 
 export default async function ProjectPage({ params }: { params: Promise<{ id: string }> }) {
   const owner = await requirePageOwner();
@@ -50,11 +83,21 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
     : [];
   const sourceNames = Object.fromEntries(sources.map((s) => [s.id, s.name]));
 
-  // Панель «Что говорят анкеты»: задачи Т1 организации, совпадающие с шагами проекта
-  const t1Rows = await db.test1Session.findMany({
-    where: { status: "completed", user: { orgId: owner.orgId } },
-    include: { user: { select: { name: true } } },
+  // Сотрудники, описавшие процесс: источники проекта + интервью организации
+  // с совпадающим по названию процессом в резюме
+  const orgInterviewSources = await db.source.findMany({
+    where: { project: { orgId: owner.orgId }, type: "interview" },
+    select: { id: true, name: true, projectId: true, parsedJson: true },
   });
+  const orgProjectTitles = Object.fromEntries(
+    (await db.project.findMany({ where: { orgId: owner.orgId }, select: { id: true, title: true } })).map((p) => [
+      p.id,
+      p.title,
+    ]),
+  );
+  const describedBy = employeesForProject(id, project.title, orgInterviewSources);
+  const contributors = contributingInterviews(id, project.title, orgInterviewSources, orgProjectTitles);
+
   const stepNames = sources.flatMap((s) => {
     const p = s.parsedJson as ParsedSource | null;
     return (p?.candidateSteps ?? []).map((st) => st.name);
@@ -62,22 +105,6 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
   for (const stage of latestMap ? (latestMap.json as ProcessMapJson).stages : []) {
     stepNames.push(...stage.steps.map((st) => st.name));
   }
-  const t1Mentions = matchT1ToSteps(
-    t1Rows.map((r) => {
-      const a = r.answers as Test1Answers | null;
-      return {
-        name: r.user.name,
-        department: a?.passport?.department ?? "—",
-        tasks: (a?.tasks ?? []).map((t) => ({
-          title: t.title,
-          frequency: t.frequency,
-          duration: t.duration,
-          irritation: t.irritation,
-        })),
-      };
-    }),
-    stepNames,
-  );
 
   // Участники проекта (ручное назначение) + свободные сотрудники с подсказкой совпадений
   const participants = await db.projectParticipant.findMany({
@@ -87,8 +114,7 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
         select: {
           id: true,
           name: true,
-          test1: { select: { status: true, answers: true } },
-          interviews: { select: { status: true } },
+          interviews: { select: { status: true, summary: true, facts: true }, orderBy: { startedAt: "desc" } },
         },
       },
     },
@@ -100,31 +126,13 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
     select: {
       id: true,
       name: true,
-      test1: { select: { status: true, answers: true } },
-      interviews: { select: { status: true } },
+      interviews: { select: { status: true, summary: true, facts: true }, orderBy: { startedAt: "desc" } },
     },
     orderBy: { name: "asc" },
   });
-  const employeeMatches = (userId: string): boolean => {
-    const e = employees.find((x) => x.id === userId);
-    if (!e) return false;
-    const a = e.test1?.answers as Test1Answers | null;
-    const mentions = matchT1ToSteps(
-      [{ name: e.name, department: a?.passport?.department ?? "—", tasks: (a?.tasks ?? []).map((t) => ({ title: t.title, frequency: t.frequency, duration: t.duration, irritation: t.irritation })) }],
-      stepNames,
-    );
-    return mentions.length > 0;
-  };
-  const deptOf = (e: { test1?: { answers: unknown } | null }): string => {
-    const a = e.test1?.answers as Test1Answers | null;
-    return a?.passport?.department ?? "—";
-  };
-  const t2StatusOf = (e: { interviews: { status: string }[] }): string =>
-    e.interviews.some((i) => i.status === "completed")
-      ? "completed"
-      : e.interviews.some((i) => i.status === "in_progress" || i.status === "awaiting_confirmation")
-        ? "in_progress"
-        : "not_started";
+
+  const deptOf = (interviews: InterviewBrief[]): string =>
+    latestCompleted(interviews)?.summary?.employee?.department ?? "—";
 
   const conflictDocNames = new Map(
     await Promise.all(
@@ -147,6 +155,12 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
             <Badge variant={statusBadgeVariant(project.status)}>{statusLabel(project.status)}</Badge>
             {project.description && <span>{project.description}</span>}
           </div>
+          {describedBy.length > 0 && (
+            <div className="mt-1 text-sm text-zinc-600" title={ru.projects.employeesHint}>
+              <span className="text-xs font-medium text-zinc-500">{ru.projects.employees}: </span>
+              {describedBy.join(", ")}
+            </div>
+          )}
         </div>
       </div>
 
@@ -166,20 +180,22 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
               participants={participants.map((p) => ({
                 id: p.user.id,
                 name: p.user.name,
-                department: deptOf(p.user),
-                t1: p.user.test1?.status ?? "not_started",
-                t2: t2StatusOf(p.user),
+                department: deptOf(p.user.interviews as InterviewBrief[]),
+                interview: interviewStatus(p.user.interviews),
               }))}
               available={employees
                 .filter((e) => !assignedIds.has(e.id))
-                .map((e) => ({
-                  id: e.id,
-                  name: e.name,
-                  department: deptOf(e),
-                  tasksMatch: employeeMatches(e.id),
-                }))}
+                .map((e) => {
+                  const briefs = e.interviews as InterviewBrief[];
+                  const done = latestCompleted(briefs);
+                  return {
+                    id: e.id,
+                    name: e.name,
+                    department: deptOf(briefs),
+                    tasksMatch: done ? factsMatchStepNames(done.facts ?? [], stepNames) : false,
+                  };
+                })}
             />
-            <ProjectT1Panel mentions={t1Mentions} />
             <SourcesClient
             projectId={id}
             sources={sources.map((s) => ({
@@ -190,6 +206,7 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
               parsed: (s.parsedJson as ParsedSource | null) ?? null,
               createdAt: s.createdAt.toISOString(),
             }))}
+            contributors={contributors}
             conflicts={conflicts.map((c) => ({
               id: c.id,
               description: c.description,

@@ -3,12 +3,12 @@ import { handle } from "@/lib/api";
 import { requireApiOwner } from "@/lib/guards";
 import { csvResponse, toCsv } from "@/lib/csv";
 import type { AnalysisScores } from "@/lib/schemas/analysis";
-import type { Test1Answers } from "@/lib/schemas/test1";
+import type { InterviewSummary } from "@/lib/schemas/interview";
 
 /**
  * GET /api/analytics/export?type=steps|people
  * steps — ранжирование шагов по automationScore (все проекты организации)
- * people — отчёт по людям из Блока 6 Теста 1 (отношение к AI)
+ * people — отчёт по людям из завершённых интервью
  */
 export async function GET(req: Request) {
   return handle(async () => {
@@ -16,26 +16,27 @@ export async function GET(req: Request) {
     const type = new URL(req.url).searchParams.get("type") ?? "steps";
 
     if (type === "people") {
-      const rows = await db.test1Session.findMany({
+      const rows = await db.interviewSession.findMany({
         where: { status: "completed", user: { orgId: owner.orgId } },
         include: { user: { select: { name: true, email: true } } },
+        orderBy: { startedAt: "asc" },
       });
       const csv = toCsv(
-        ["Сотрудник", "Email", "Отдел", "Должность", "Отношение к AI (1-5)", "Страхи", "Задача для AI «джинна»"],
+        ["Сотрудник", "Email", "Должность", "Отдел", "Процессов", "Процессы", "Главные боли"],
         rows.map((r) => {
-          const a = r.answers as Test1Answers | null;
+          const s = r.summary as InterviewSummary | null;
           return [
             r.user.name,
             r.user.email,
-            a?.passport?.department ?? "",
-            a?.passport?.position ?? "",
-            a?.aiAttitude?.attitudeScore ?? "",
-            a?.aiAttitude?.fears?.join(", ") ?? "",
-            a?.aiAttitude?.genieTask ?? "",
+            s?.employee?.position ?? "",
+            s?.employee?.department ?? "",
+            s?.processes.length ?? 0,
+            (s?.processes ?? []).map((p) => p.name).join("; "),
+            (s?.processes ?? []).map((p) => p.pain).filter(Boolean).join("; "),
           ];
         }),
       );
-      return csvResponse(csv, "people-ai-report.csv");
+      return csvResponse(csv, "people-interviews.csv");
     }
 
     // steps

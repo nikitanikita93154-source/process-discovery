@@ -1,34 +1,28 @@
 /**
  * Демо-организация №2: «ООО Вектор Логистик».
- * Владелец + 3 сотрудника с заполненным Тестом 1 (разной полноты).
- * Тест 2 проводится live через SSE с Ollama (не в этом скрипте).
+ * Владелец + 3 сотрудника с завершёнными интервью (разной полноты).
  */
 import { PrismaClient } from "@prisma/client";
 import bcrypt from "bcryptjs";
-import { DEPARTMENT_DEFAULTS, type Test1Answers } from "../src/lib/schemas/test1";
+import { DEPARTMENT_DEFAULTS } from "../src/lib/content/org";
 
 const db = new PrismaClient();
 
-const t1 = (over: Partial<Test1Answers>): Test1Answers => ({
-  passport: { position: "Специалист", department: "Операции", experience: "1–3 года" },
-  tasks: [
-    {
-      title: "Обработка входящих заявок на доставку",
-      frequency: "несколько раз в день",
-      duration: "15–60 мин",
-      systems: ["почта", "Excel"],
-      irritation: 4,
-      regulated: "нет",
-    },
-  ],
-  expectations: { waitingFrequency: 4, waitingFor: "подтверждения от склада", behaviorWhileWaiting: "переключаюсь на другое" },
-  mistakes: { tasksWithErrors: "оформление накладных", errorFrequency: "несколько раз в неделю", causes: ["чужие ошибки", "нет данных"] },
-  gutDecisions: { hasGutDecisions: true, example: "выбираю перевозчика по опыту, без сравнения цен" },
-  templateTexts: { frequency: "постоянно", example: "письмо-уведомление клиенту о доставке" },
-  aiAttitude: { attitudeScore: 4, fears: ["ошибки"], genieTask: "уведомления клиентам" },
-  openQuestion: { wasteOfTime: "перенос заявок из почты в Excel" },
-  ...over,
-});
+interface DemoEmployee {
+  email: string;
+  name: string;
+  position: string;
+  department: string;
+  daysAgo: number;
+  processes: {
+    name: string;
+    steps: string[];
+    actors: string[];
+    systems: string[];
+    volume: string;
+    pain: string;
+  }[];
+}
 
 async function main() {
   const orgName = "ООО Вектор Логистик";
@@ -37,8 +31,6 @@ async function main() {
   // чистим, если уже создавали
   const old = await db.organization.findUnique({ where: { inviteCode } });
   if (old) {
-    const users = await db.user.findMany({ where: { orgId: old.id }, select: { id: true } });
-    const ids = users.map((u) => u.id);
     await db.$transaction([
       db.analysisReport.deleteMany({ where: { map: { project: { orgId: old.id } } } }),
       db.followUpQuestion.deleteMany({ where: { project: { orgId: old.id } } }),
@@ -46,8 +38,7 @@ async function main() {
       db.processMap.deleteMany({ where: { project: { orgId: old.id } } }),
       db.conflict.deleteMany({ where: { project: { orgId: old.id } } }),
       db.source.deleteMany({ where: { project: { orgId: old.id } } }),
-      db.interviewSession.deleteMany({ where: { userId: { in: ids } } }),
-      db.test1Session.deleteMany({ where: { userId: { in: ids } } }),
+      db.interviewSession.deleteMany({ where: { user: { orgId: old.id } } }),
       db.project.deleteMany({ where: { orgId: old.id } }),
       db.user.deleteMany({ where: { orgId: old.id } }),
       db.organization.delete({ where: { id: old.id } }),
@@ -59,96 +50,85 @@ async function main() {
     data: { name: orgName, inviteCode, hourlyRate: 60, departments: [...DEPARTMENT_DEFAULTS] },
   });
 
-  const owner = await db.user.create({
+  await db.user.create({
     data: { orgId: org.id, email: "owner@vector.io", name: "Игорь Векторный", role: "OWNER", passwordHash },
   });
-  await db.test1Session.create({ data: { userId: owner.id, status: "not_started" } });
 
-  const employees: { email: string; name: string; answers: Test1Answers; daysAgo: number }[] = [
+  const employees: DemoEmployee[] = [
     {
       email: "marina@vector.io",
       name: "Марина Ким",
+      position: "Логист",
+      department: "Логистика",
       daysAgo: 2,
-      answers: t1({
-        passport: { position: "Логист", department: "Логистика", experience: "3+ лет" },
-        tasks: [
-          {
-            title: "Обработка входящих заявок на доставку",
-            frequency: "несколько раз в день",
-            duration: "15–60 мин",
-            systems: ["почта", "Excel", "мессенджеры"],
-            irritation: 5,
-            regulated: "нет",
-          },
-          {
-            title: "Распределение заказов по перевозчикам",
-            frequency: "раз в день",
-            duration: ">60 мин",
-            systems: ["Excel", "почта"],
-            irritation: 4,
-            regulated: "нет",
-          },
-        ],
-        aiAttitude: { attitudeScore: 5, fears: ["ничего не боюсь"], genieTask: "автоматический выбор перевозчика по цене и рейтингу" },
-      }),
+      processes: [
+        {
+          name: "Обработка входящих заявок на доставку",
+          steps: ["Приём заявки из почты", "Ввод в Excel", "Подтверждение склада", "Уведомление клиента"],
+          actors: ["Логист", "Склад"],
+          systems: ["почта", "Excel", "мессенджеры"],
+          volume: "несколько раз в день по 15–60 мин",
+          pain: "перенос заявок из почты в Excel и ожидание подтверждения склада",
+        },
+        {
+          name: "Распределение заказов по перевозчикам",
+          steps: ["Сбор заявок", "Выбор перевозчика", "Рассылка заданий"],
+          actors: ["Логист"],
+          systems: ["Excel", "почта"],
+          volume: "раз в день, >60 мин",
+          pain: "выбор перевозчика по опыту, без сравнения цен",
+        },
+      ],
     },
     {
       email: "oleg@vector.io",
       name: "Олег Тарасов",
+      position: "Кладовщик",
+      department: "Операции",
       daysAgo: 1,
-      answers: t1({
-        passport: { position: "Кладовщик", department: "Операции", experience: "6–12 мес" },
-        tasks: [
-          {
-            title: "Сборка заказа по накладной",
-            frequency: "несколько раз в день",
-            duration: "15–60 мин",
-            systems: ["1С", "бумага"],
-            irritation: 3,
-            regulated: "да",
-          },
-        ],
-        mistakes: { tasksWithErrors: "пересорт при сборке", errorFrequency: "раз в неделю", causes: ["человеческий фактор"] },
-        gutDecisions: { hasGutDecisions: false },
-        templateTexts: { frequency: "нет" },
-        aiAttitude: { attitudeScore: 3, fears: ["заменят", "сложно"], genieTask: "проверка накладных" },
-      }),
+      processes: [
+        {
+          name: "Сборка заказа по накладной",
+          steps: ["Получение накладной", "Сборка позиций", "Проверка пересорта", "Сдача на отгрузку"],
+          actors: ["Кладовщик"],
+          systems: ["1С", "бумага"],
+          volume: "несколько раз в день по 15–60 мин",
+          pain: "пересорт при сборке из-за человеческого фактора",
+        },
+      ],
     },
     {
       email: "sveta@vector.io",
       name: "Света Орлова",
+      position: "Менеджер по продажам",
+      department: "Продажи",
       daysAgo: 0,
-      answers: t1({
-        passport: { position: "Менеджер по продажам", department: "Продажи", experience: "1–3 года" },
-        tasks: [
-          {
-            title: "Выставление счетов клиентам",
-            frequency: "несколько раз в день",
-            duration: "5–15 мин",
-            systems: ["1С", "почта", "CRM"],
-            irritation: 4,
-            regulated: "да",
-          },
-          {
-            title: "Ответы на вопросы о статусе доставки",
-            frequency: "несколько раз в день",
-            duration: "<5 мин",
-            systems: ["мессенджеры", "CRM"],
-            irritation: 5,
-            regulated: "нет",
-          },
-          {
-            title: "Еженедельный отчёт по продажам для директора",
-            frequency: "раз в неделю",
-            duration: ">60 мин",
-            systems: ["Excel", "CRM"],
-            irritation: 4,
-            regulated: "да",
-          },
-        ],
-        templateTexts: { frequency: "постоянно", example: "отчёт по фиксированному шаблону с выгрузкой из CRM" },
-        aiAttitude: { attitudeScore: 4, fears: ["сложно"], genieTask: "сборка недельного отчёта" },
-      }),
+      processes: [
+        {
+          name: "Выставление счетов клиентам",
+          steps: ["Проверка реквизитов", "Счёт в 1С", "Отправка клиенту"],
+          actors: ["Менеджер"],
+          systems: ["1С", "почта", "CRM"],
+          volume: "несколько раз в день по 5–15 мин",
+          pain: "ручной перенос реквизитов из CRM в 1С",
+        },
+        {
+          name: "Ответы на вопросы о статусе доставки",
+          steps: ["Поиск заказа", "Уточнение у логиста", "Ответ клиенту"],
+          actors: ["Менеджер", "Логист"],
+          systems: ["мессенджеры", "CRM"],
+          volume: "несколько раз в день по <5 мин",
+          pain: "однотипные ответы вручную в мессенджерах",
+        },
+        {
+          name: "Еженедельный отчёт по продажам для директора",
+          steps: ["Выгрузка из CRM", "Сведение в Excel", "Оформление по шаблону", "Отправка директору"],
+          actors: ["Менеджер"],
+          systems: ["Excel", "CRM"],
+          volume: "раз в неделю, >60 мин",
+          pain: "отчёт по фиксированному шаблону собирается вручную",
+        },
+      ],
     },
   ];
 
@@ -157,13 +137,21 @@ async function main() {
       data: { orgId: org.id, email: e.email, name: e.name, role: "EMPLOYEE", passwordHash },
     });
     const base = Date.now() - e.daysAgo * 24 * 3600 * 1000;
-    await db.test1Session.create({
+    await db.interviewSession.create({
       data: {
         userId: u.id,
         status: "completed",
         startedAt: new Date(base),
-        completedAt: new Date(base + 7 * 60 * 1000),
-        answers: e.answers,
+        endedAt: new Date(base + 15 * 60 * 1000),
+        agenda: [],
+        coverage: { topics: {}, followUps: 0 },
+        transcript: [],
+        facts: [],
+        summary: {
+          employee: { position: e.position, department: e.department },
+          processes: e.processes,
+          open_questions: [],
+        },
       },
     });
   }

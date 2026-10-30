@@ -5,7 +5,7 @@ import type { SessionUser } from "@/lib/guards";
 
 const employeeNav = [
   { href: "/me", label: ru.nav.me },
-  { href: "/me/test1", label: ru.nav.test1 },
+  { href: "/me/interview", label: ru.nav.interview },
 ];
 
 const ownerNav = [

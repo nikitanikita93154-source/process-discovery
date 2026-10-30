@@ -1,14 +1,13 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { db } from "@/lib/db";
-import { handle, ApiError, parseBody } from "@/lib/api";
+import { handle, ApiError } from "@/lib/api";
 import { requireApiOwner } from "@/lib/guards";
 import { chat } from "@/lib/llm";
 import { processMapJsonSchema, type ProcessMapJson } from "@/lib/schemas/map";
-import { test1AnswersSchema, type Test1Answers } from "@/lib/schemas/test1";
 import { parsedSourceSchema, type ParsedSource } from "@/lib/schemas/source";
 import { analysisScoresSchema, hoursEstimateSchema, swotSchema } from "@/lib/schemas/analysis";
-import { buildInterviewIndex, buildT1Index, scoreMap } from "@/lib/scoring";
+import { buildInterviewIndex, scoreMap } from "@/lib/scoring";
 
 export const maxDuration = 180;
 
@@ -32,15 +31,7 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
     const org = await db.organization.findUnique({ where: { id: owner.orgId } });
     const hourlyRate = org?.hourlyRate ?? 50;
 
-    // Факты: все завершённые Тесты 1 организации + интервью-источники проекта
-    const t1Rows = await db.test1Session.findMany({
-      where: { status: "completed", user: { orgId: owner.orgId } },
-    });
-    const t1Answers = t1Rows
-      .map((r) => (r.answers ? test1AnswersSchema.safeParse(r.answers) : null))
-      .filter((r): r is { success: true; data: Test1Answers } => r?.success === true)
-      .map((r) => r.data);
-
+    // Факты: интервью-источники проекта
     const sourceRows = await db.source.findMany({
       where: { projectId: map.projectId, type: "interview", status: "parsed" },
     });
@@ -49,15 +40,14 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
       .filter((r): r is { success: true; data: ParsedSource } => r?.success === true)
       .map((r) => r.data);
 
-    const t1Index = buildT1Index(t1Answers);
-    const interviewIndex = buildInterviewIndex(parsedSources, t1Answers);
+    const interviewIndex = buildInterviewIndex(parsedSources);
 
     // --- Детерминированный скоринг ---
     const llmEstimates = new Map<string, number>();
     const llmNotes: string[] = [];
 
     // предварительный расчёт, чтобы найти шаги без часов из фактов
-    const preScored = scoreMap({ map: json, t1Index, interviewIndex, hourlyRate, llmEstimates: new Map() });
+    const preScored = scoreMap({ map: json, interviewIndex, hourlyRate, llmEstimates: new Map() });
     const needsEstimate = preScored.steps.filter((s) => s.hoursEstimate);
     if (needsEstimate.length > 0) {
       try {
@@ -70,7 +60,7 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
             {
               role: "user",
               content: needsEstimate
-                .map((s) => `- ${s.stepName} (актор: ${s.actor || "?"}, система: ${s.actor || "?"})`)
+                .map((s) => `- ${s.stepName} (актор: ${s.actor || "?"}, система: ${interviewIndex.entries.get(norm(s.stepName))?.system || "?"})`)
                 .join("\n"),
             },
           ],
@@ -85,7 +75,7 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
       }
     }
 
-    const { steps, totals, stp } = scoreMap({ map: json, t1Index, interviewIndex, hourlyRate, llmEstimates });
+    const { steps, totals, stp } = scoreMap({ map: json, interviewIndex, hourlyRate, llmEstimates });
 
     // --- SWOT (LLM) ---
     let swot = { strengths: [] as string[], weaknesses: [] as string[], opportunities: [] as string[], threats: [] as string[] };

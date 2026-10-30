@@ -2,22 +2,45 @@ import { z } from "zod";
 
 // ============================================================
 // Найденные процессы (ProcessCandidate): схемы LLM-детекции
-// и API. Кандидат = процесс, обнаруженный в интервью/анкетах
-// Т1/документах, ожидающий решения владельца.
+// и API. Кандидат = процесс, обнаруженный в интервью/документах,
+// ожидающий решения владельца.
 // ============================================================
 
 /** Запись-доказательство кандидата: кто и что упомянул. */
 export const evidenceItemSchema = z.object({
-  who: z.string(), // «Марина Ким (Тест 1)» / «Документ „Регламент…"»
+  who: z.string(), // «Марина Ким (интервью)» / «Документ „Регламент…"»
   what: z.string(), // задача/факт
   ref: z.string().optional(), // частота/раздел/тема
 });
 export type EvidenceItem = z.infer<typeof evidenceItemSchema>;
 
+/** Дедуп-слияние доказательств: по (who, what), новые в конец. */
+export function mergeEvidence(existing: EvidenceItem[], additions: EvidenceItem[]): EvidenceItem[] {
+  const seen = new Set(existing.map((e) => `${e.who}::${e.what}`.toLowerCase()));
+  const merged = [...existing];
+  for (const a of additions) {
+    const key = `${a.who}::${a.what}`.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    merged.push(a);
+  }
+  return merged;
+}
+
 /** LLM-схема маршрутизации резюме интервью по проектам организации. */
 export const routingSchema = z.object({
   attachToProjectId: z.string().nullable(), // id существующего проекта или null
   matchReason: z.string().optional(),
+  /** Для каждого процесса резюме: совпадение с проектом или существующим кандидатом. */
+  matches: z
+    .array(
+      z.object({
+        process: z.string(),
+        projectId: z.string().nullable().optional(),
+        candidateId: z.string().nullable().optional(),
+      }),
+    )
+    .default([]),
   newCandidates: z
     .array(
       z.object({
@@ -29,21 +52,6 @@ export const routingSchema = z.object({
     .default([]),
 });
 export type Routing = z.infer<typeof routingSchema>;
-
-/** LLM-схема кластеризации задач Теста 1. */
-export const t1ClusteringSchema = z.object({
-  clusters: z
-    .array(
-      z.object({
-        title: z.string().min(3).max(200),
-        description: z.string().max(500).optional(),
-        taskTitles: z.array(z.string()).default([]), // исходные названия задач, вошедшие в кластер
-        reason: z.string().max(300).optional(),
-      }),
-    )
-    .default([]),
-});
-export type T1Clustering = z.infer<typeof t1ClusteringSchema>;
 
 /** LLM-схема детекции процесса в документе. */
 export const docProcessDetectionSchema = z.object({

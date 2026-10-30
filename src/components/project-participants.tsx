@@ -11,8 +11,7 @@ export interface ParticipantRow {
   id: string;
   name: string;
   department: string;
-  t1: string;
-  t2: string;
+  interview: string;
 }
 
 export interface AvailableEmployee {
@@ -78,10 +77,7 @@ export function ProjectParticipants({
             <span className="text-xs text-zinc-400">{p.department}</span>
             <span className="ml-auto flex items-center gap-1.5 text-xs">
               <span className="rounded bg-zinc-100 px-1.5 py-0.5">
-                {ru.participants.t1}: {statusLabel(p.t1)}
-              </span>
-              <span className="rounded bg-zinc-100 px-1.5 py-0.5">
-                {ru.participants.t2}: {statusLabel(p.t2)}
+                {ru.participants.interview}: {statusLabel(p.interview)}
               </span>
               <Button size="sm" variant="ghost" className="h-7 text-red-600" onClick={() => remove(p.id)} disabled={busy}>
                 {ru.participants.remove}

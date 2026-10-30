@@ -14,7 +14,7 @@ export function TeamClient({
 }: {
   inviteCode: string;
   orgName: string;
-  employees: { id: string; name: string; email: string; t1: string; t2: string }[];
+  employees: { id: string; name: string; email: string; interview: string }[];
 }) {
   const router = useRouter();
   const [copied, setCopied] = useState(false);
@@ -60,15 +60,14 @@ export function TeamClient({
               <TR>
                 <TH>{ru.common.employee}</TH>
                 <TH>Email</TH>
-                <TH>Тест 1</TH>
-                <TH>Тест 2</TH>
+                <TH>{ru.nav.interview}</TH>
                 <TH>{ru.common.actions}</TH>
               </TR>
             </THead>
             <TBody>
               {employees.length === 0 && (
                 <TR>
-                  <TD colSpan={5} className="text-center text-zinc-400">
+                  <TD colSpan={4} className="text-center text-zinc-400">
                     {ru.common.empty}
                   </TD>
                 </TR>
@@ -77,8 +76,7 @@ export function TeamClient({
                 <TR key={e.id}>
                   <TD className="font-medium">{e.name}</TD>
                   <TD className="text-zinc-500">{e.email}</TD>
-                  <TD>{e.t1}</TD>
-                  <TD>{e.t2}</TD>
+                  <TD>{e.interview}</TD>
                   <TD>
                     <Button
                       variant="ghost"

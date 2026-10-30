@@ -41,6 +41,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
           `ИСТОЧНИК ${s.id} (${s.type === "interview" ? "интервью" : "документ"}: «${s.name}»)\n` +
           `Шаги: ${(p?.candidateSteps ?? []).map((st) => `${st.name}${st.actor ? ` [${st.actor}]` : ""}${st.system ? ` {${st.system}}` : ""}${st.frequency ? ` @${st.frequency}` : ""}`).join("; ") || "—"}\n` +
           `Участники: ${(p?.actors ?? []).join(", ") || "—"}\n` +
+          `Системы: ${(p?.systems ?? []).join(", ") || "—"}\n` +
           `Правила: ${(p?.rules ?? []).map((r) => `${r.text} (${r.source ?? "?"})`).join("; ") || "—"}\n` +
           `Исключения: ${(p?.exceptions ?? []).join("; ") || "—"}\n` +
           `Цитаты: ${(p?.citations ?? []).map((c) => c.ref).join("; ") || "—"}`
