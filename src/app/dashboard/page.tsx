@@ -1,3 +1,4 @@
+import { Eyebrow, PageTitle } from "@/components/ui/brand";
 import Link from "next/link";
 import { db } from "@/lib/db";
 import { requirePageOwner } from "@/lib/page-guards";
@@ -19,9 +20,9 @@ export default async function DashboardPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">{ru.nav.dashboard}</h1>
-        <Link href="/dashboard/team" className="text-sm text-indigo-600 hover:underline">
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <div className="space-y-2"><Eyebrow>SYNAPT · ОБЗОР</Eyebrow><PageTitle>{ru.nav.dashboard}</PageTitle><p className="max-w-2xl text-sm leading-relaxed text-muted">Вся команда и прогресс чекапа — в одном месте.</p></div>
+        <Link href="/dashboard/team" className="rounded-full border border-line px-5 py-2.5 text-sm text-ink transition-colors hover:border-ink">
           {ru.nav.team} →
         </Link>
       </div>

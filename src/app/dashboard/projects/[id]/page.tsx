@@ -1,3 +1,4 @@
+import { Eyebrow, PageTitle } from "@/components/ui/brand";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { db } from "@/lib/db";
@@ -144,20 +145,20 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
   );
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <Link href="/dashboard/projects" className="text-sm text-zinc-500 hover:underline">
+          <Link href="/dashboard/projects" className="mb-5 inline-block text-sm text-muted hover:text-ink hover:underline">
             {ru.project.backToProjects}
           </Link>
-          <h1 className="mt-1 text-2xl font-bold">{project.title}</h1>
-          <div className="mt-1 flex items-center gap-2 text-sm text-zinc-500">
+          <div className="space-y-2"><Eyebrow>SYNAPT · ПРОЕКТ</Eyebrow><PageTitle>{project.title}</PageTitle></div>
+          <div className="mt-4 flex flex-wrap items-center gap-2 text-sm text-muted">
             <Badge variant={statusBadgeVariant(project.status)}>{statusLabel(project.status)}</Badge>
             {project.description && <span>{project.description}</span>}
           </div>
           {describedBy.length > 0 && (
-            <div className="mt-1 text-sm text-zinc-600" title={ru.projects.employeesHint}>
-              <span className="text-xs font-medium text-zinc-500">{ru.projects.employees}: </span>
+            <div className="mt-1 text-sm text-muted" title={ru.projects.employeesHint}>
+              <span className="text-xs font-medium text-muted">{ru.projects.employees}: </span>
               {describedBy.join(", ")}
             </div>
           )}
@@ -174,7 +175,7 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
         </TabsList>
 
         <TabsContent value="sources">
-          <div className="space-y-4">
+          <div className="space-y-6">
             <ProjectParticipants
               projectId={id}
               participants={participants.map((p) => ({

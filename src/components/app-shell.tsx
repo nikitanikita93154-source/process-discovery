@@ -1,4 +1,7 @@
 import Link from "next/link";
+import { LogOut } from "lucide-react";
+import { SynaptLogo } from "@/components/ui/brand";
+import { NavLinks } from "@/components/nav-links";
 import { ru } from "@/lib/content/ru";
 import { signOut } from "@/lib/auth";
 import type { SessionUser } from "@/lib/guards";
@@ -25,26 +28,16 @@ export function AppShell({
   const nav = user.role === "OWNER" ? ownerNav : employeeNav;
   return (
     <div className="min-h-screen flex flex-col">
-      <header className="sticky top-0 z-40 border-b border-zinc-200 bg-white">
-        <div className="mx-auto flex h-14 max-w-6xl items-center justify-between gap-4 px-4">
-          <div className="flex items-center gap-6">
-            <Link href={user.role === "OWNER" ? "/dashboard" : "/me"} className="font-bold text-indigo-600">
-              {ru.app.name}
+      <header className="sticky top-0 z-40 border-b border-line bg-white/95 backdrop-blur-md">
+        <div className="mx-auto flex h-16 max-w-7xl items-center justify-between gap-3 px-4 sm:px-8">
+          <div className="flex min-w-0 items-center gap-8">
+            <Link href={user.role === "OWNER" ? "/dashboard" : "/me"} className="rounded-full" aria-label="Synapt — главная">
+              <SynaptLogo />
             </Link>
-            <nav className="flex gap-1">
-              {nav.map((item) => (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  className="rounded-md px-3 py-1.5 text-sm text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900"
-                >
-                  {item.label}
-                </Link>
-              ))}
-            </nav>
+            <NavLinks items={nav} className="hidden lg:flex" />
           </div>
           <div className="flex items-center gap-3">
-            <span className="text-sm text-zinc-500">{user.name}</span>
+            <span className="hidden max-w-40 truncate text-sm text-muted sm:block">{user.name}</span>
             <form
               action={async () => {
                 "use server";
@@ -53,15 +46,16 @@ export function AppShell({
             >
               <button
                 type="submit"
-                className="rounded-md px-3 py-1.5 text-sm text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900 cursor-pointer"
+                className="flex items-center gap-2 rounded-full px-3 py-2 text-sm text-muted hover:bg-paper hover:text-ink cursor-pointer"
               >
-                {ru.nav.logout}
+                <LogOut className="h-4 w-4" aria-hidden="true" /> {ru.nav.logout}
               </button>
             </form>
           </div>
         </div>
+        <div className="border-t border-line/60 px-4 py-2 lg:hidden"><NavLinks items={nav} className="overflow-x-auto thin-scroll" /></div>
       </header>
-      <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-8">{children}</main>
+      <main className="mx-auto w-full min-w-0 max-w-7xl flex-1 px-4 py-8 sm:px-8 sm:py-10">{children}</main>
     </div>
   );
 }

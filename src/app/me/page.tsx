@@ -1,3 +1,5 @@
+import { Check, ArrowUpRight } from "lucide-react";
+import { Eyebrow, PageTitle } from "@/components/ui/brand";
 import Link from "next/link";
 import { db } from "@/lib/db";
 import { auth } from "@/lib/auth";
@@ -30,11 +32,11 @@ export default async function MePage() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold">{ru.nav.me}</h1>
-      <div className="grid gap-4 sm:grid-cols-2">
-        <Card>
+      <div className="space-y-2"><Eyebrow>SYNAPT · МОЙ ЧЕКАП</Eyebrow><PageTitle>{ru.nav.me}</PageTitle><p className="max-w-2xl text-sm leading-relaxed text-muted">Ваш опыт поможет команде увидеть, где процессы можно сделать проще.</p></div>
+      <div className="grid max-w-3xl gap-4">
+        <Card className="border-line-warm bg-paper">
           <CardHeader>
-            <div className="flex items-center justify-between">
+            <div className="flex flex-wrap items-center justify-between gap-3">
               <CardTitle>{ru.nav.interview}</CardTitle>
               <Badge variant={statusBadgeVariant(status)}>{statusLabel(status)}</Badge>
             </div>
@@ -42,15 +44,15 @@ export default async function MePage() {
           </CardHeader>
           <CardContent>
             {done ? (
-              <div className="flex items-center justify-between">
-                <p className="text-sm text-emerald-600">✓ {ru.done.title}</p>
-                <Link href="/me/done" className="text-sm text-indigo-600 hover:underline">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <p className="text-sm text-ok"><Check className="mr-1 inline h-4 w-4" /> {ru.done.title}</p>
+                <Link href="/me/done" className="text-sm text-ink hover:underline">
                   {ru.done.interviewSummary} →
                 </Link>
               </div>
             ) : (
               <Link href="/me/interview">
-                <Button>{status === "in_progress" || status === "awaiting_confirmation" ? "Продолжить" : "Начать интервью"}</Button>
+                <Button className="text-lime" size="lg">{status === "in_progress" || status === "awaiting_confirmation" ? "Продолжить" : "Начать интервью"}<ArrowUpRight className="h-4 w-4" /></Button>
               </Link>
             )}
           </CardContent>

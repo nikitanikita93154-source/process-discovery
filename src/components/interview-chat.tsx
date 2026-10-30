@@ -1,5 +1,7 @@
 "use client";
 
+import { ArrowUp, Check } from "lucide-react";
+import { Eyebrow, PageTitle } from "@/components/ui/brand";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ru } from "@/lib/content/ru";
@@ -198,16 +200,16 @@ export function InterviewChat({ initialSession }: { initialSession: InterviewSes
   const awaitingConfirmation = summary !== null;
 
   return (
-    <div className="mx-auto flex h-[calc(100vh-8rem)] max-w-3xl flex-col space-y-3">
+    <div className="mx-auto flex h-[calc(100dvh-13rem)] min-h-[540px] max-w-3xl flex-col gap-4 lg:h-[calc(100dvh-11rem)]">
       <div>
-        <h1 className="text-2xl font-bold">{ru.interview.title}</h1>
-        <p className="text-sm text-zinc-500">{ru.interview.subtitle}</p>
+        <div className="space-y-2"><Eyebrow>01 / СБОР ЗНАНИЙ</Eyebrow><PageTitle>{ru.interview.title}</PageTitle></div>
+        <p className="mt-2 text-sm text-muted">{ru.interview.subtitle}</p>
       </div>
 
       {!awaitingConfirmation && (
         <div className="space-y-1">
-          <div className="flex items-center justify-between text-xs text-zinc-500">
-            <span className="font-medium text-indigo-600">
+          <div className="flex flex-wrap items-center justify-between gap-1 text-xs text-muted">
+            <span className="font-mono text-[10px] uppercase tracking-wide text-muted">
               {ru.interview.topicProgress} {topicNumber} {ru.interview.topicOf} {topicsTotal}
               {currentTopic ? `: ${currentTopic}` : ""}
             </span>
@@ -217,25 +219,26 @@ export function InterviewChat({ initialSession }: { initialSession: InterviewSes
         </div>
       )}
 
-      <Card className="flex-1 overflow-hidden">
-        <CardContent className="thin-scroll h-full space-y-3 overflow-y-auto p-4">
+      <Card className="min-h-0 flex-1 overflow-hidden">
+        <CardContent className="thin-scroll h-full space-y-5 overflow-y-auto p-4 sm:p-6">
           {messages.map((m, i) => (
             <div key={i} className={cn("flex", m.role === "user" ? "justify-end" : "justify-start")}>
               <div
                 className={cn(
-                  "max-w-[85%] rounded-2xl px-4 py-2.5 text-sm whitespace-pre-wrap",
+                  "max-w-[90%] break-words rounded-[22px] px-5 py-4 text-sm leading-relaxed whitespace-pre-wrap sm:max-w-[85%]",
                   m.role === "user"
-                    ? "bg-indigo-600 text-white rounded-br-sm"
-                    : "bg-zinc-100 text-zinc-900 rounded-bl-sm",
+                    ? "bg-ink text-white rounded-br-sm"
+                    : "border border-line-soft bg-cream text-ink rounded-bl-sm",
                 )}
               >
+                {m.role === "assistant" && <span className="mb-2 block font-mono text-[10px] uppercase tracking-widest text-accent">Synapt · AI-интервьюер</span>}
                 {m.text}
               </div>
             </div>
           ))}
           {busy && (
             <div className="flex justify-start">
-              <div className="rounded-2xl bg-zinc-100 px-4 py-2.5 text-sm text-zinc-400">…</div>
+              <div className="rounded-2xl bg-cream px-4 py-2.5 text-sm text-muted">…</div>
             </div>
           )}
 
@@ -249,20 +252,21 @@ export function InterviewChat({ initialSession }: { initialSession: InterviewSes
           )}
 
           {error && (
-            <div className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</div>
+            <div className="rounded-[14px] bg-danger-soft p-3 text-sm text-danger">{error}</div>
           )}
           <div ref={bottomRef} />
         </CardContent>
       </Card>
 
       <form
-        className="flex items-end gap-2"
+        className="flex flex-col gap-3 rounded-[22px] border border-line-warm bg-cream p-3 focus-within:ring-2 focus-within:ring-lime sm:flex-row sm:items-end"
         onSubmit={(e) => {
           e.preventDefault();
           void sendMessage(input);
         }}
       >
         <textarea
+          aria-label="Ваш ответ интервьюеру"
           ref={taRef}
           rows={3}
           value={input}
@@ -278,18 +282,18 @@ export function InterviewChat({ initialSession }: { initialSession: InterviewSes
               void sendMessage(input);
             }
           }}
-          className="thin-scroll flex-1 resize-none rounded-xl border border-zinc-300 bg-white px-3 py-2 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 disabled:opacity-60"
+          className="thin-scroll min-w-0 flex-1 resize-none rounded-[14px] bg-transparent px-3 py-2 text-sm outline-none placeholder:text-muted focus-visible:outline-none disabled:opacity-60"
         />
-        <div className="flex flex-col items-stretch gap-1">
-          <Button type="submit" disabled={busy || !input.trim()}>
-            {ru.interview.send}
+        <div className="flex items-center justify-between gap-2 sm:flex-col sm:items-stretch">
+          <Button type="submit" variant="lime" disabled={busy || !input.trim()}>
+            {ru.interview.send}<ArrowUp className="h-4 w-4" />
           </Button>
           {!awaitingConfirmation && (
             <Button
               type="button"
               size="sm"
               variant="ghost"
-              className="text-zinc-400"
+              className="text-muted"
               disabled={busy}
               onClick={() => void runStream({ command: "STOP" })}
             >
@@ -318,53 +322,53 @@ function SummaryCard({
   const employeeLine = [summary.employee?.position, summary.employee?.department].filter(Boolean).join(" · ");
 
   return (
-    <div className="space-y-3 rounded-2xl border border-indigo-200 bg-indigo-50/60 p-4">
-      <div className="flex items-center justify-between">
-        <div className="text-xs font-semibold uppercase tracking-wide text-indigo-700">
-          {ru.interview.summaryTitle}
+    <div className="space-y-4 rounded-[22px] border border-line-warm bg-paper p-4 sm:p-6">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="font-mono text-[11px] font-medium uppercase tracking-wider text-accent">
+          РЕЗЮМЕ · {ru.interview.summaryTitle}
         </div>
-        {employeeLine && <div className="text-xs text-zinc-500">{employeeLine}</div>}
+        {employeeLine && <div className="text-xs text-muted">{employeeLine}</div>}
       </div>
 
       {summary.processes.length === 0 && (
-        <p className="text-sm text-zinc-500">{ru.interview.noProcesses}</p>
+        <p className="text-sm text-muted">{ru.interview.noProcesses}</p>
       )}
 
       {summary.processes.map((p, i) => (
-        <div key={i} className="space-y-1.5 rounded-xl bg-white p-3 text-sm">
+        <div key={i} className="space-y-2 rounded-[14px] border border-line-soft bg-cream p-4 text-sm">
           <div className="font-medium">{p.name}</div>
           {p.steps.length > 0 && (
             <div>
-              <span className="text-xs font-medium text-zinc-500">{ru.interview.processSteps}:</span>
-              <ol className="ml-4 list-decimal text-zinc-700">
+              <span className="font-mono text-[10px] uppercase tracking-wide text-muted">{ru.interview.processSteps}:</span>
+              <ol className="ml-4 list-decimal text-ink">
                 {p.steps.map((s, j) => (
                   <li key={j}>{s}</li>
                 ))}
               </ol>
             </div>
           )}
-          <div className="grid gap-x-4 gap-y-1 text-zinc-700 sm:grid-cols-2">
+          <div className="grid gap-x-4 gap-y-1 text-ink sm:grid-cols-2">
             {p.actors.length > 0 && (
               <div>
-                <span className="text-xs font-medium text-zinc-500">{ru.interview.processActors}: </span>
+                <span className="font-mono text-[10px] uppercase tracking-wide text-muted">{ru.interview.processActors}: </span>
                 {p.actors.join(", ")}
               </div>
             )}
             {p.systems.length > 0 && (
               <div>
-                <span className="text-xs font-medium text-zinc-500">{ru.interview.processSystems}: </span>
+                <span className="font-mono text-[10px] uppercase tracking-wide text-muted">{ru.interview.processSystems}: </span>
                 {p.systems.join(", ")}
               </div>
             )}
             {p.volume && (
               <div>
-                <span className="text-xs font-medium text-zinc-500">{ru.interview.processVolume}: </span>
+                <span className="font-mono text-[10px] uppercase tracking-wide text-muted">{ru.interview.processVolume}: </span>
                 {p.volume}
               </div>
             )}
             {p.pain && (
               <div>
-                <span className="text-xs font-medium text-zinc-500">{ru.interview.processPain}: </span>
+                <span className="font-mono text-[10px] uppercase tracking-wide text-muted">{ru.interview.processPain}: </span>
                 {p.pain}
               </div>
             )}
@@ -376,9 +380,9 @@ function SummaryCard({
           это вопросы для владельца/аналитика, хранятся в БД */}
 
       <div className="flex flex-col gap-2 pt-1 sm:flex-row sm:items-center sm:justify-between">
-        <p className="text-xs text-zinc-500">{ru.interview.confirmHint}</p>
-        <Button onClick={onConfirm} disabled={confirming || disabled} className="shrink-0">
-          {confirming ? ru.common.loading : ru.interview.confirmButton}
+        <p className="text-xs text-muted">{ru.interview.confirmHint}</p>
+        <Button variant="lime" onClick={onConfirm} disabled={confirming || disabled} className="shrink-0">
+          <Check className="h-4 w-4" />{confirming ? ru.common.loading : ru.interview.confirmButton}
         </Button>
       </div>
     </div>

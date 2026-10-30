@@ -1,5 +1,7 @@
 "use client";
 
+import { Check, Copy, Users } from "lucide-react";
+import { Eyebrow, PageTitle } from "@/components/ui/brand";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { ru } from "@/lib/content/ru";
@@ -33,26 +35,26 @@ export function TeamClient({
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold">{ru.nav.team}</h1>
+      <div className="space-y-2"><Eyebrow>SYNAPT · КОМАНДА</Eyebrow><PageTitle>{ru.nav.team}</PageTitle><p className="max-w-2xl text-sm leading-relaxed text-muted">Соберите опыт людей, которые знают процессы изнутри.</p></div>
 
       <Card>
         <CardHeader>
           <CardTitle>Организация: {orgName}</CardTitle>
           <CardDescription>Передайте код сотрудникам — они введут его при регистрации</CardDescription>
         </CardHeader>
-        <CardContent className="flex items-center gap-3">
-          <code className="rounded-lg bg-zinc-100 px-4 py-2 text-lg font-mono font-bold tracking-wider">
+        <CardContent className="flex flex-wrap items-center gap-3">
+          <code className="rounded-[14px] bg-ink px-6 py-4 font-mono text-lg font-medium tracking-wider text-lime">
             {inviteCode}
           </code>
           <Button variant="outline" size="sm" onClick={copyCode}>
-            {copied ? "Скопировано ✓" : "Копировать"}
+            {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}{copied ? "Скопировано" : "Копировать"}
           </Button>
         </CardContent>
       </Card>
 
       <Card>
         <CardHeader>
-          <CardTitle>Сотрудники ({employees.length})</CardTitle>
+          <CardTitle className="flex items-center gap-2"><Users className="h-4 w-4 text-muted" />Сотрудники ({employees.length})</CardTitle>
         </CardHeader>
         <CardContent className="p-0">
           <Table>
@@ -67,7 +69,7 @@ export function TeamClient({
             <TBody>
               {employees.length === 0 && (
                 <TR>
-                  <TD colSpan={4} className="text-center text-zinc-400">
+                  <TD colSpan={4} className="text-center text-muted">
                     {ru.common.empty}
                   </TD>
                 </TR>
@@ -75,13 +77,13 @@ export function TeamClient({
               {employees.map((e) => (
                 <TR key={e.id}>
                   <TD className="font-medium">{e.name}</TD>
-                  <TD className="text-zinc-500">{e.email}</TD>
-                  <TD>{e.interview}</TD>
+                  <TD className="text-muted">{e.email}</TD>
+                  <TD>{e.interview === "✓" ? <span className="inline-flex items-center gap-1.5 rounded-full bg-ok-soft px-2.5 py-1 font-mono text-[10px] uppercase text-ok"><Check className="h-3 w-3" />Пройдено</span> : <span className="text-muted">Не начато</span>}</TD>
                   <TD>
                     <Button
                       variant="ghost"
                       size="sm"
-                      className="text-red-600 hover:bg-red-50"
+                      className="text-danger hover:bg-danger-soft"
                       onClick={() => removeEmployee(e.id, e.name)}
                     >
                       {ru.common.delete}

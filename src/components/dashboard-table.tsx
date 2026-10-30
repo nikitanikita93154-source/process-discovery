@@ -26,12 +26,12 @@ export function DashboardTable({ rows }: { rows: DashboardRow[] }) {
 
   return (
     <Card>
-      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
+      <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3 space-y-0 pb-5">
         <CardTitle>Прогресс интервью</CardTitle>
         {departments.length > 0 && (
           <div className="flex items-center gap-2 text-sm">
-            <span className="text-zinc-400">{ru.common.department}:</span>
-            <Select value={dept} onChange={(e) => setDept(e.target.value)} className="w-44">
+            <span className="text-muted">{ru.common.department}:</span>
+            <Select aria-label="Фильтр по отделу" value={dept} onChange={(e) => setDept(e.target.value)} className="w-44">
               <option value="">все</option>
               {departments.map((d) => (
                 <option key={d} value={d}>
@@ -55,9 +55,9 @@ export function DashboardTable({ rows }: { rows: DashboardRow[] }) {
           <TBody>
             {filtered.length === 0 && (
               <TR>
-                <TD colSpan={4} className="text-center text-zinc-400">
+                <TD colSpan={4} className="text-center text-muted">
                   {ru.common.empty}. Пригласите сотрудников на{" "}
-                  <Link href="/dashboard/team" className="text-indigo-600 hover:underline">
+                  <Link href="/dashboard/team" className="text-ink hover:underline">
                     странице команды
                   </Link>
                   .
@@ -93,20 +93,21 @@ export function OrgProgressCards({
     <div className="grid gap-4 sm:grid-cols-2">
       <Card>
         <CardHeader className="pb-2">
-          <CardTitle className="text-sm font-medium text-zinc-500">Сотрудников</CardTitle>
+          <CardTitle className="font-mono text-[11px] uppercase tracking-wider text-muted">Сотрудников</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="text-3xl font-bold">{total}</div>
-          <p className="text-xs text-zinc-400">в организации</p>
+          <div className="font-head text-4xl font-medium tracking-tight">{total}</div>
+          <p className="mt-3 text-xs text-muted">в организации</p>
         </CardContent>
       </Card>
       <Card>
         <CardHeader className="pb-2">
-          <CardTitle className="text-sm font-medium text-zinc-500">Интервью пройдено</CardTitle>
+          <CardTitle className="font-mono text-[11px] uppercase tracking-wider text-muted">Интервью пройдено</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="text-3xl font-bold">{pct(interviewDone)}%</div>
-          <Progress value={pct(interviewDone)} className="mt-2" />
+          <div className="font-head text-4xl font-medium tracking-tight">{pct(interviewDone)}%</div>
+          <p className="mt-3 text-xs text-muted">{interviewDone} из {total} сотрудников завершили интервью</p>
+          <Progress value={pct(interviewDone)} className="mt-4" />
         </CardContent>
       </Card>
     </div>

@@ -1,3 +1,4 @@
+import { Eyebrow, PageTitle } from "@/components/ui/brand";
 import { db } from "@/lib/db";
 import { requirePageOwner } from "@/lib/page-guards";
 import { ru } from "@/lib/content/ru";
@@ -61,10 +62,10 @@ export default async function AnalyticsPage() {
 
   const heatColor = (value: number, max: number): string => {
     const ratio = max === 0 ? 0 : value / max;
-    if (ratio >= 0.75) return "bg-red-100 text-red-800";
-    if (ratio >= 0.5) return "bg-amber-100 text-amber-800";
-    if (ratio >= 0.25) return "bg-yellow-50 text-yellow-800";
-    return "bg-emerald-50 text-emerald-800";
+    if (ratio >= 0.75) return "bg-accent text-white";
+    if (ratio >= 0.5) return "bg-lime text-ink";
+    if (ratio >= 0.25) return "bg-lime-soft text-ink";
+    return "bg-cream text-muted";
   };
   const maxProcesses = Math.max(...[...byDept.values()].map((d) => d.processes), 1);
 
@@ -74,12 +75,12 @@ export default async function AnalyticsPage() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold">{ru.analytics.title}</h1>
+          <div className="space-y-2"><Eyebrow>SYNAPT · РЕЗУЛЬТАТЫ</Eyebrow><PageTitle>{ru.analytics.title}</PageTitle><p className="max-w-2xl text-sm leading-relaxed text-muted">От знаний о процессах — к приоритетам автоматизации.</p></div>
         </div>
         <ExportButtons />
       </div>
 
-      {!hasData && <p className="py-10 text-center text-zinc-400">{ru.analytics.empty}</p>}
+      {!hasData && <p className="py-10 text-center text-muted">{ru.analytics.empty}</p>}
 
       {allSteps.length > 0 && (
         <Card>
@@ -101,15 +102,15 @@ export default async function AnalyticsPage() {
               <TBody>
                 {allSteps.slice(0, 20).map((s) => (
                   <TR key={`${s.project}-${s.stepId}`}>
-                    <TD className="text-zinc-500">{s.project}</TD>
+                    <TD className="text-muted">{s.project}</TD>
                     <TD className="font-medium">{s.stepName}</TD>
                     <TD className="text-right">
                       {formatHours(s.hoursPerYear)}
                       {s.hoursEstimate && <Badge variant="warning" className="ml-1">?</Badge>}
                     </TD>
                     <TD className="text-right">{formatMoney(s.costPerYear)} ₽</TD>
-                    <TD className="text-right font-bold text-indigo-600">{s.automationScore}</TD>
-                    <TD className="text-xs text-zinc-500">{s.suggestTech}</TD>
+                    <TD className="text-right font-bold text-ink">{s.automationScore}</TD>
+                    <TD className="text-xs text-muted">{s.suggestTech}</TD>
                   </TR>
                 ))}
               </TBody>
@@ -126,13 +127,13 @@ export default async function AnalyticsPage() {
           </CardHeader>
           <CardContent className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
             {[...byDept.entries()].map(([dept, d]) => (
-              <div key={dept} className="rounded-lg border border-zinc-200 p-3">
+              <div key={dept} className="rounded-[14px] border border-line p-3">
                 <div className="font-medium">{dept}</div>
                 <div className="mt-2 flex gap-2">
-                  <span className={`rounded px-2 py-1 text-xs ${heatColor(d.processes, maxProcesses)}`}>
+                  <span className={`rounded-full px-3 py-1 font-mono text-[10px] ${heatColor(d.processes, maxProcesses)}`}>
                     {ru.analytics.processesColumn.toLowerCase()} {d.processes}
                   </span>
-                  <span className="rounded bg-zinc-100 px-2 py-1 text-xs text-zinc-600">
+                  <span className="rounded-full bg-paper px-3 py-1 font-mono text-[10px] text-muted">
                     сотр. {d.employees}
                   </span>
                 </div>
@@ -166,7 +167,7 @@ export default async function AnalyticsPage() {
                     <TD>{p.position}</TD>
                     <TD>{p.department}</TD>
                     <TD className="text-right">{p.processes.length}</TD>
-                    <TD className="max-w-[320px] text-xs text-zinc-600">
+                    <TD className="max-w-[320px] text-xs text-muted">
                       {p.processes.map((x) => x.pain).filter(Boolean).join("; ") || "—"}
                     </TD>
                   </TR>

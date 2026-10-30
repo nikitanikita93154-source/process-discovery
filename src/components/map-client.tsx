@@ -1,5 +1,6 @@
 "use client";
 
+import { TriangleAlert, Workflow } from "lucide-react";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { ru } from "@/lib/content/ru";
@@ -97,9 +98,9 @@ export function MapClient({
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <Button onClick={() => void build()} disabled={busy}>
-            {busy ? ru.project.building : ru.project.buildMap}
+            <Workflow className="h-4 w-4" />{busy ? ru.project.building : ru.project.buildMap}
           </Button>
           {map && (
             <>
@@ -108,32 +109,32 @@ export function MapClient({
               </Badge>
               {noCitationCount > 0 && (
                 <Badge variant="warning">
-                  ⚠ {noCitationCount} {ru.map.warningsCount}
+                  <TriangleAlert className="h-3 w-3" /> {noCitationCount} {ru.map.warningsCount}
                 </Badge>
               )}
-              <span className="text-xs text-zinc-400">{formatDateTime(map.createdAt)}</span>
+              <span className="text-xs text-muted">{formatDateTime(map.createdAt)}</span>
             </>
           )}
         </div>
         {versions.length > 1 && (
-          <span className="text-xs text-zinc-400">
+          <span className="text-xs text-muted">
             {ru.map.version.toLowerCase()}ы: {versions.map((v) => `v${v.version}(${v.author === "ai" ? "AI" : "чел."})`).join(", ")}
           </span>
         )}
       </div>
 
-      {okMessage && <p className="text-sm text-emerald-600">{okMessage}</p>}
-      {error && <p className="text-sm text-red-600">{error}</p>}
+      {okMessage && <p className="text-sm text-ok">{okMessage}</p>}
+      {error && <p className="text-sm text-danger">{error}</p>}
 
-      {!map && !busy && <p className="py-10 text-center text-zinc-400">{ru.map.empty}</p>}
+      {!map && !busy && <p className="py-10 text-center text-muted">{ru.map.empty}</p>}
 
       {followUps.length > 0 && (
-        <Card className="border-amber-200 bg-amber-50/50">
+        <Card className="border-warn/20 bg-warn-soft/50">
           <CardContent className="p-4">
-            <h3 className="text-sm font-semibold text-amber-700">
+            <h3 className="text-sm font-semibold text-warn">
               Вопросы для следующего интервью ({followUps.filter((f) => f.status === "open").length} открытых)
             </h3>
-            <ul className="mt-2 space-y-1 text-sm text-zinc-700">
+            <ul className="mt-2 space-y-1 text-sm text-ink">
               {followUps.map((f) => (
                 <li key={f.id}>
                   {f.status === "asked" ? "✓" : "•"} {f.text}
@@ -162,9 +163,9 @@ export function MapClient({
             <DialogDescription>{ru.map.buildRequiresApproval}</DialogDescription>
           </DialogHeader>
           <div className="max-h-72 space-y-2 overflow-y-auto thin-scroll">
-            {(diff ?? []).length === 0 && <p className="text-sm text-zinc-400">{ru.map.diffEmpty}</p>}
+            {(diff ?? []).length === 0 && <p className="text-sm text-muted">{ru.map.diffEmpty}</p>}
             {(diff ?? []).map((d, i) => (
-              <div key={i} className="flex items-start gap-2 rounded-md border border-zinc-200 p-2 text-sm">
+              <div key={i} className="flex items-start gap-2 rounded-[14px] border border-line p-2 text-sm">
                 <Badge
                   variant={d.kind === "added" ? "success" : d.kind === "removed" ? "destructive" : "warning"}
                 >
@@ -172,8 +173,8 @@ export function MapClient({
                 </Badge>
                 <div>
                   <span className="font-medium">{d.step}</span>
-                  <span className="text-zinc-400"> · {d.stage}</span>
-                  <div className="text-xs text-zinc-500">{d.details}</div>
+                  <span className="text-muted"> · {d.stage}</span>
+                  <div className="text-xs text-muted">{d.details}</div>
                 </div>
               </div>
             ))}

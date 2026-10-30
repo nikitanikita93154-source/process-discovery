@@ -63,23 +63,23 @@ export function ProjectParticipants({
   };
 
   return (
-    <div className="rounded-xl border border-emerald-200 bg-emerald-50/40 p-4">
-      <h3 className="font-semibold text-emerald-800">{ru.participants.title}</h3>
-      <p className="mt-0.5 text-xs text-zinc-500">{ru.participants.hint}</p>
+    <div className="rounded-[22px] border border-ok/20 bg-ok-soft p-4">
+      <h3 className="font-head text-sm font-medium text-ok">{ru.participants.title}</h3>
+      <p className="mt-0.5 text-xs text-muted">{ru.participants.hint}</p>
 
       <div className="mt-3 space-y-1.5">
         {participants.length === 0 && (
-          <p className="text-sm text-zinc-500">{ru.participants.empty}</p>
+          <p className="text-sm text-muted">{ru.participants.empty}</p>
         )}
         {participants.map((p) => (
-          <div key={p.id} className="flex flex-wrap items-center gap-2 rounded-lg bg-white px-3 py-2 text-sm">
+          <div key={p.id} className="flex flex-wrap items-center gap-2 rounded-[14px] bg-white px-3 py-2 text-sm">
             <span className="font-medium">{p.name}</span>
-            <span className="text-xs text-zinc-400">{p.department}</span>
+            <span className="text-xs text-muted">{p.department}</span>
             <span className="ml-auto flex items-center gap-1.5 text-xs">
-              <span className="rounded bg-zinc-100 px-1.5 py-0.5">
+              <span className="rounded bg-cream px-1.5 py-0.5">
                 {ru.participants.interview}: {statusLabel(p.interview)}
               </span>
-              <Button size="sm" variant="ghost" className="h-7 text-red-600" onClick={() => remove(p.id)} disabled={busy}>
+              <Button size="sm" variant="ghost" className="h-7 text-danger" onClick={() => remove(p.id)} disabled={busy}>
                 {ru.participants.remove}
               </Button>
             </span>
@@ -89,7 +89,7 @@ export function ProjectParticipants({
 
       {available.length > 0 && (
         <div className="mt-3 flex flex-wrap items-center gap-2">
-          <Select value={picked} onChange={(e) => setPicked(e.target.value)} className="w-64" disabled={busy}>
+          <Select aria-label="Выбрать сотрудника" value={picked} onChange={(e) => setPicked(e.target.value)} className="w-full sm:w-64" disabled={busy}>
             <option value="">{ru.participants.pick}</option>
             {available.map((e) => (
               <option key={e.id} value={e.id}>
@@ -100,10 +100,10 @@ export function ProjectParticipants({
           <Button size="sm" onClick={add} disabled={busy || !picked}>
             + {ru.participants.add}
           </Button>
-          <span className="text-xs text-zinc-400">{ru.participants.addHint}</span>
+          <span className="text-xs text-muted">{ru.participants.addHint}</span>
         </div>
       )}
-      {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
+      {error && <p className="mt-2 text-sm text-danger">{error}</p>}
     </div>
   );
 }

@@ -7,13 +7,13 @@ export function statusBadgeVariant(status: string): BadgeVariant {
     case "completed":
     case "parsed":
     case "analyzed":
-      return "success";
+      return "ok";
     case "in_progress":
     case "capturing":
     case "mapping":
     case "validating":
     case "awaiting_confirmation":
-      return "default";
+      return "lime";
     case "failed":
     case "abandoned":
       return "destructive";

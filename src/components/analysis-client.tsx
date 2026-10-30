@@ -1,5 +1,6 @@
 "use client";
 
+import { Trophy, TriangleAlert } from "lucide-react";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { ru } from "@/lib/content/ru";
@@ -12,16 +13,16 @@ import { Table, TBody, TD, TH, THead, TR } from "@/components/ui/table";
 import { formatHours, formatMoney } from "@/lib/utils";
 
 function scoreColor(score: number): string {
-  if (score >= 70) return "bg-emerald-500";
-  if (score >= 40) return "bg-amber-500";
-  return "bg-zinc-400";
+  if (score >= 70) return "bg-lime";
+  if (score >= 40) return "bg-lime/70";
+  return "bg-lime/40";
 }
 
 const SWOT_COLORS = {
-  s: "text-emerald-600",
-  w: "text-amber-600",
-  o: "text-indigo-600",
-  t: "text-red-600",
+  s: "text-ok",
+  w: "text-warn",
+  o: "text-ink",
+  t: "text-danger",
 } as const;
 
 export function AnalysisClient({
@@ -55,53 +56,53 @@ export function AnalysisClient({
   };
 
   if (!mapId) {
-    return <p className="py-10 text-center text-zinc-400">{ru.analysis.empty}</p>;
+    return <p className="py-10 text-center text-muted">{ru.analysis.empty}</p>;
   }
 
   const scores = report?.scores;
 
   return (
     <div className="space-y-5">
-      <div className="flex items-center gap-3">
+      <div className="flex flex-wrap items-center gap-3">
         <Button onClick={() => void run()} disabled={busy}>
           {busy ? ru.analysis.running : ru.analysis.run}
         </Button>
         {report && (
-          <span className="text-xs text-zinc-400">
+          <span className="text-xs text-muted">
             {ru.analysis.generatedAt}: {new Date(report.createdAt).toLocaleString("ru-RU")}
           </span>
         )}
-        {error && <span className="text-sm text-red-600">{error}</span>}
+        {error && <span className="text-sm text-danger">{error}</span>}
       </div>
 
-      {!report && !busy && <p className="py-10 text-center text-zinc-400">{ru.analysis.empty}</p>}
+      {!report && !busy && <p className="py-10 text-center text-muted">{ru.analysis.empty}</p>}
 
       {scores && (
         <>
           {/* Сводка */}
-          <div className="grid gap-3 sm:grid-cols-4">
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
             <Card>
               <CardContent className="p-4">
-                <div className="text-xs text-zinc-500">{ru.analysis.hoursTotal}</div>
-                <div className="text-2xl font-bold">{formatHours(scores.totals.hoursPerYear)}</div>
+                <div className="font-mono text-[10px] uppercase tracking-wide text-muted">{ru.analysis.hoursTotal}</div>
+                <div className="mt-3 font-head text-2xl font-medium tracking-tight">{formatHours(scores.totals.hoursPerYear)}</div>
               </CardContent>
             </Card>
             <Card>
               <CardContent className="p-4">
-                <div className="text-xs text-zinc-500">{ru.analysis.costTotal}</div>
-                <div className="text-2xl font-bold">{formatMoney(scores.totals.costPerYear)} ₽</div>
+                <div className="font-mono text-[10px] uppercase tracking-wide text-muted">{ru.analysis.costTotal}</div>
+                <div className="mt-3 font-head text-2xl font-medium tracking-tight">{formatMoney(scores.totals.costPerYear)} ₽</div>
               </CardContent>
             </Card>
             <Card>
               <CardContent className="p-4">
-                <div className="text-xs text-zinc-500">{ru.analysis.stpTitle}: {ru.analysis.stpCurrent}</div>
-                <div className="text-lg font-semibold">{formatHours(scores.stp.currentHours)} ч → {formatMoney(scores.stp.currentCost)} ₽</div>
+                <div className="font-mono text-[10px] uppercase tracking-wide text-muted">{ru.analysis.stpTitle}: {ru.analysis.stpCurrent}</div>
+                <div className="mt-3 font-head text-base font-medium leading-relaxed">{formatHours(scores.stp.currentHours)} ч → {formatMoney(scores.stp.currentCost)} ₽</div>
               </CardContent>
             </Card>
             <Card>
               <CardContent className="p-4">
-                <div className="text-xs text-zinc-500">{ru.analysis.stpForecast}</div>
-                <div className="text-lg font-semibold text-emerald-600">
+                <div className="font-mono text-[10px] uppercase tracking-wide text-muted">{ru.analysis.stpForecast}</div>
+                <div className="mt-3 font-head text-base font-medium leading-relaxed text-ok">
                   {formatHours(scores.stp.forecastHours)} ч → {formatMoney(scores.stp.forecastCost)} ₽
                 </div>
               </CardContent>
@@ -109,9 +110,9 @@ export function AnalysisClient({
           </div>
 
           {scores.llmNotes.length > 0 && (
-            <div className="rounded-lg bg-amber-50 px-4 py-2 text-sm text-amber-700">
+            <div className="rounded-[14px] bg-warn-soft px-4 py-2 text-sm text-warn">
               {scores.llmNotes.map((n, i) => (
-                <div key={i}>⚠ {n}</div>
+                <div key={i} className="flex items-start gap-2"><TriangleAlert className="mt-0.5 h-4 w-4 shrink-0" />{n}</div>
               ))}
             </div>
           )}
@@ -138,7 +139,7 @@ export function AnalysisClient({
                     <TR key={s.stepId}>
                       <TD>
                         <div className="font-medium">{s.stepName}</div>
-                        <div className="text-xs text-zinc-400">
+                        <div className="text-xs text-muted">
                           {s.stage} · {s.actor || "—"}
                         </div>
                       </TD>
@@ -153,13 +154,13 @@ export function AnalysisClient({
                       <TD className="text-right">{formatMoney(s.costPerYear)} ₽</TD>
                       <TD>
                         <div className="flex items-center gap-2">
-                          <div className="h-2 w-16 overflow-hidden rounded-full bg-zinc-200">
+                          <div className="h-2 w-16 overflow-hidden rounded-full bg-line">
                             <div className={`h-full ${scoreColor(s.automationScore)}`} style={{ width: `${s.automationScore}%` }} />
                           </div>
                           <span className="font-medium">{s.automationScore}</span>
                         </div>
                       </TD>
-                      <TD className="max-w-[220px] text-xs text-zinc-600">{s.suggestTech}</TD>
+                      <TD className="max-w-[220px] text-xs text-muted">{s.suggestTech}</TD>
                       <TD className="text-right font-semibold">{s.priority}</TD>
                     </TR>
                   ))}
@@ -171,23 +172,23 @@ export function AnalysisClient({
           {/* Топ-5 */}
           <Card>
             <CardHeader className="pb-2">
-              <CardTitle>🏆 {ru.analysis.topCandidates}</CardTitle>
+              <CardTitle className="flex items-center gap-2"><Trophy className="h-4 w-4 text-accent" />{ru.analysis.topCandidates}</CardTitle>
             </CardHeader>
             <CardContent className="space-y-2">
               {scores.steps.slice(0, 5).map((s, i) => (
-                <div key={s.stepId} className="flex items-center justify-between rounded-lg border border-zinc-200 p-3">
-                  <div className="flex items-center gap-3">
-                    <span className="flex h-7 w-7 items-center justify-center rounded-full bg-indigo-100 text-sm font-bold text-indigo-700">
+                <div key={s.stepId} className="flex items-center justify-between rounded-[14px] border border-line p-3">
+                  <div className="flex flex-wrap items-center gap-3">
+                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-lime font-mono text-sm font-medium text-ink">
                       {i + 1}
                     </span>
                     <div>
                       <div className="font-medium">{s.stepName}</div>
-                      <div className="text-xs text-zinc-500">{s.suggestTech}</div>
+                      <div className="text-xs text-muted">{s.suggestTech}</div>
                     </div>
                   </div>
                   <div className="text-right text-sm">
-                    <div className="font-bold text-indigo-600">{s.automationScore}</div>
-                    <div className="text-xs text-zinc-400">{formatHours(s.hoursPerYear)} ч/год</div>
+                    <div className="font-bold text-ink">{s.automationScore}</div>
+                    <div className="text-xs text-muted">{formatHours(s.hoursPerYear)} ч/год</div>
                   </div>
                 </div>
               ))}
@@ -195,7 +196,7 @@ export function AnalysisClient({
           </Card>
 
           {/* SWOT */}
-          <Card>
+          <Card className="border-line-warm bg-paper">
             <CardHeader className="pb-2">
               <CardTitle>{ru.analysis.swotTitle}</CardTitle>
             </CardHeader>
@@ -208,13 +209,13 @@ export function AnalysisClient({
                   [ru.analysis.swotT, report?.swot.threats, SWOT_COLORS.t],
                 ] as const
               ).map(([title, items, color]) => (
-                <div key={title} className="rounded-lg border border-zinc-200 p-3">
-                  <div className={`text-sm font-semibold ${color}`}>{title}</div>
-                  <ul className="mt-1 list-disc space-y-1 pl-4 text-sm text-zinc-600">
+                <div key={title} className="rounded-[14px] border border-line-warm bg-cream p-5">
+                  <div className={`font-mono text-xs font-medium uppercase tracking-wider ${color}`}>{title}</div>
+                  <ul className="mt-1 list-disc space-y-1 pl-4 text-sm text-muted">
                     {(items ?? []).map((item, i) => (
                       <li key={i}>{item}</li>
                     ))}
-                    {(items ?? []).length === 0 && <li className="text-zinc-400">—</li>}
+                    {(items ?? []).length === 0 && <li className="text-muted">—</li>}
                   </ul>
                 </div>
               ))}
@@ -231,10 +232,10 @@ export function AnalysisClient({
               </CardHeader>
               <CardContent className="space-y-2">
                 {Object.entries(scores.steps[0].breakdown).map(([factor, value]) => (
-                  <div key={factor} className="flex items-center gap-3">
-                    <span className="w-40 text-sm text-zinc-600">{FACTOR_LABELS[factor as keyof typeof FACTOR_LABELS] ?? factor}</span>
-                    <div className="h-2 flex-1 overflow-hidden rounded-full bg-zinc-200">
-                      <div className="h-full bg-indigo-500" style={{ width: `${Math.min(100, value)}%` }} />
+                  <div key={factor} className="flex flex-wrap items-center gap-3">
+                    <span className="w-40 text-sm text-muted">{FACTOR_LABELS[factor as keyof typeof FACTOR_LABELS] ?? factor}</span>
+                    <div className="h-2 flex-1 overflow-hidden rounded-full bg-line">
+                      <div className="h-full bg-lime" style={{ width: `${Math.min(100, value)}%` }} />
                     </div>
                     <span className="w-8 text-right text-sm">{Math.round(value)}</span>
                   </div>

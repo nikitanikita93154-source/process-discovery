@@ -37,21 +37,21 @@ export function OrgSettings({
       <CardHeader>
         <CardTitle>Настройки организации</CardTitle>
         <CardDescription>
-          Ставка (₽/час) используется в расчёте стоимости процессов; отделы — справочник для Теста 1
+          Ставка (₽/час) используется в расчёте стоимости процессов; отделы помогают структурировать данные команды
         </CardDescription>
       </CardHeader>
       <CardContent className="grid gap-3 sm:grid-cols-[200px_1fr_auto] sm:items-end">
         <div className="space-y-1.5">
-          <Label>Ставка, ₽/час</Label>
-          <Input value={rate} onChange={(e) => setRate(e.target.value)} inputMode="decimal" />
+          <Label htmlFor="hourly-rate">Ставка, ₽/час</Label>
+          <Input id="hourly-rate" value={rate} onChange={(e) => setRate(e.target.value)} inputMode="decimal" />
         </div>
         <div className="space-y-1.5">
-          <Label>Отделы (через запятую)</Label>
-          <Input value={departments} onChange={(e) => setDepartments(e.target.value)} />
+          <Label htmlFor="departments">Отделы (через запятую)</Label>
+          <Input id="departments" value={departments} onChange={(e) => setDepartments(e.target.value)} />
         </div>
         <div className="flex items-center gap-2">
           <Button onClick={() => void save()}>Сохранить</Button>
-          {msg && <span className="text-sm text-emerald-600">{msg}</span>}
+          {msg && <span className="text-sm text-ok">{msg}</span>}
         </div>
       </CardContent>
     </Card>

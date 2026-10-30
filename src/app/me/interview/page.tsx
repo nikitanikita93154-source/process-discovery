@@ -38,7 +38,7 @@ export default async function InterviewPage() {
   return (
     <div className="py-2">
       {initial && initial.transcript.length > 0 && (
-        <div className="mx-auto mb-3 max-w-3xl rounded-lg bg-emerald-50 px-4 py-2 text-sm text-emerald-700">
+        <div className="mx-auto mb-3 max-w-3xl rounded-[14px] bg-ok-soft px-4 py-2 text-sm text-ok">
           {ru.interview.sessionRestored}
         </div>
       )}

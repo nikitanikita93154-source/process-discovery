@@ -1,17 +1,63 @@
 @import "tailwindcss";
 
-body {
-  background-color: #fafafa;
-  color: #18181b;
-  font-family: var(--font-geist-sans), system-ui, -apple-system, sans-serif;
+@theme {
+  --color-lime: #C7F14E;
+  --color-lime-soft: #F0F8DB;
+  --color-ink: #17181C;
+  --color-muted: #6F675A;
+  --color-line: #E5E5E0;
+  --color-paper: #F4F1EC;
+  --color-cream: #FFFDF9;
+  --color-line-warm: #E5DDCD;
+  --color-line-soft: #EFE9DB;
+  --color-accent: #D95205;
+  --color-accent-dark: #B54404;
+  --color-accent-soft: #F9EADB;
+  --color-ok: #0F7A4D;
+  --color-ok-soft: #EAF5EE;
+  --color-warn: #B45309;
+  --color-warn-soft: #FFF3DB;
+  --color-danger: #C2311A;
+  --color-danger-soft: #FBEDE8;
 }
 
-/* Скроллбар для канваса и чата */
-.thin-scroll::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+@theme inline {
+  --font-head: var(--font-unbounded), system-ui, sans-serif;
+  --font-body: var(--font-golos), system-ui, sans-serif;
+  --font-sans: var(--font-golos), system-ui, sans-serif;
+  --font-mono: var(--font-jetbrains), monospace;
 }
-.thin-scroll::-webkit-scrollbar-thumb {
-  background: #d4d4d8;
-  border-radius: 3px;
+
+@layer base {
+  body { background: #fff; color: var(--color-ink); font-family: var(--font-golos), system-ui, sans-serif; }
+  ::selection { background: var(--color-lime); color: var(--color-ink); }
+  button, a, input, textarea, select { -webkit-tap-highlight-color: transparent; }
+  :focus-visible { outline: 2px solid var(--color-ink); outline-offset: 4px; }
+  button:not(:disabled), a { touch-action: manipulation; }
 }
+
+.thin-scroll { scrollbar-width: thin; scrollbar-color: #C8C1B5 transparent; }
+.thin-scroll::-webkit-scrollbar { width: 6px; height: 6px; }
+.thin-scroll::-webkit-scrollbar-thumb { background: #C8C1B5; border-radius: 3px; }
+
+.synapt-canvas {
+  --xy-background-color: #FFFDF9;
+  --xy-node-color: #17181C;
+  --xy-edge-stroke: #A59D8F;
+  --xy-edge-stroke-selected: #D95205;
+  --xy-minimap-background-color: #FFFDF9;
+  --xy-minimap-mask-background-color: #F4F1EC99;
+  --xy-controls-button-background-color: #FFFDF9;
+  --xy-controls-button-background-color-hover: #F0F8DB;
+  --xy-controls-button-color: #17181C;
+  --xy-controls-button-border-color: #E5DDCD;
+}
+.synapt-canvas .react-flow__controls { border: 1px solid #E5DDCD; border-radius: 14px; overflow: hidden; box-shadow: none; }
+.synapt-canvas .react-flow__minimap { border: 1px solid #E5DDCD; border-radius: 14px; overflow: hidden; }
+.synapt-canvas .react-flow__attribution { background: #FFFDF9; color: #6F675A; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; transition-duration: .01ms !important; }
+}
+
+/* Synapt design system */

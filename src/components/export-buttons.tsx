@@ -1,11 +1,12 @@
 "use client";
 
+import { Download } from "lucide-react";
 import { ru } from "@/lib/content/ru";
 import { Button } from "@/components/ui/button";
 
 export function ExportButtons() {
   return (
-    <div className="flex gap-2">
+    <div className="flex flex-wrap gap-2">
       <Button
         variant="outline"
         size="sm"
@@ -13,7 +14,7 @@ export function ExportButtons() {
           window.location.href = "/api/analytics/export?type=steps";
         }}
       >
-        ↓ CSV: {ru.analytics.ranking.split(" ").slice(-2).join(" ")}
+        <Download className="h-3.5 w-3.5" />CSV: {ru.analytics.ranking.split(" ").slice(-2).join(" ")}
       </Button>
       <Button
         variant="outline"
@@ -22,7 +23,7 @@ export function ExportButtons() {
           window.location.href = "/api/analytics/export?type=people";
         }}
       >
-        ↓ CSV: {ru.analytics.peopleReport.split(":")[0]}
+        <Download className="h-3.5 w-3.5" />CSV: {ru.analytics.peopleReport.split(":")[0]}
       </Button>
     </div>
   );
