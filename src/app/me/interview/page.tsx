@@ -6,12 +6,15 @@ import { ru } from "@/lib/content/ru";
 import { loadInterviewState } from "@/lib/agent/session";
 import { currentTopicIndex } from "@/lib/agent/interview";
 import { TOPIC_SUMMARY } from "@/lib/agent/agenda";
-import { ACTIVE_SESSION_STATUSES } from "@/lib/schemas/interview";
+import { ACTIVE_SESSION_STATUSES, SESSION_STATUS } from "@/lib/schemas/interview";
 
 export default async function InterviewPage() {
   const session = await auth();
   if (!session?.user?.id) redirect("/login");
   if (session.user.role === "OWNER") redirect("/dashboard");
+
+  const completed = await db.interviewSession.findFirst({ where: { userId: session.user.id, status: SESSION_STATUS.COMPLETED }, select: { id: true } });
+  if (completed) redirect("/me/done");
 
   const row = await db.interviewSession.findFirst({
     where: { userId: session.user.id, status: { in: [...ACTIVE_SESSION_STATUSES] } },

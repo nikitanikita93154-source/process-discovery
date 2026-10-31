@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { cn } from "@/lib/utils";
+import { InterviewGuide } from "@/components/interview-guide";
 
 export interface InterviewSessionState {
   id: string;
@@ -93,6 +94,7 @@ export function InterviewChat({ initialSession }: { initialSession: InterviewSes
   const [error, setError] = useState<string | null>(null);
   const [summary, setSummary] = useState<InterviewSummary | null>(initialSession?.summary ?? null);
   const [confirming, setConfirming] = useState(false);
+  const [showGuide, setShowGuide] = useState(() => !initialSession || (initialSession.transcript.length === 0 && !initialSession.summary));
   const bottomRef = useRef<HTMLDivElement>(null);
   const taRef = useRef<HTMLTextAreaElement>(null);
   // Первый ход агента нужен, если транскрипт пуст или заканчивается
@@ -155,11 +157,11 @@ export function InterviewChat({ initialSession }: { initialSession: InterviewSes
   // Первый ход агента: приветствие при пустом транскрипте или ответ на
   // «висящее» неотвеченное сообщение после сбоя/перезагрузки
   useEffect(() => {
-    if (!startedRef.current) {
+    if (!showGuide && !startedRef.current) {
       startedRef.current = true;
       void runStream({});
     }
-  }, [runStream]);
+  }, [runStream, showGuide]);
 
   const sendMessage = async (text: string) => {
     const trimmed = text.trim();
@@ -201,13 +203,14 @@ export function InterviewChat({ initialSession }: { initialSession: InterviewSes
 
   return (
     <div className="mx-auto flex h-[calc(100dvh-13rem)] min-h-[540px] max-w-3xl flex-col gap-4 lg:h-[calc(100dvh-11rem)]">
+      {showGuide && <InterviewGuide onFinish={() => setShowGuide(false)} />}
       <div>
         <div className="space-y-2"><Eyebrow>01 / СБОР ЗНАНИЙ</Eyebrow><PageTitle>{ru.interview.title}</PageTitle></div>
         <p className="mt-2 text-sm text-muted">{ru.interview.subtitle}</p>
       </div>
 
       {!awaitingConfirmation && (
-        <div className="space-y-1">
+        <div className="space-y-1" data-interview-guide="progress">
           <div className="flex flex-wrap items-center justify-between gap-1 text-xs text-muted">
             <span className="font-mono text-[10px] uppercase tracking-wide text-muted">
               {ru.interview.topicProgress} {topicNumber} {ru.interview.topicOf} {topicsTotal}
@@ -219,7 +222,7 @@ export function InterviewChat({ initialSession }: { initialSession: InterviewSes
         </div>
       )}
 
-      <Card className="min-h-0 flex-1 overflow-hidden">
+      <Card className="min-h-0 flex-1 overflow-hidden" data-interview-guide="dialog">
         <CardContent className="thin-scroll h-full space-y-5 overflow-y-auto p-4 sm:p-6">
           {messages.map((m, i) => (
             <div key={i} className={cn("flex", m.role === "user" ? "justify-end" : "justify-start")}>
@@ -259,6 +262,7 @@ export function InterviewChat({ initialSession }: { initialSession: InterviewSes
       </Card>
 
       <form
+        data-interview-guide="answer"
         className="flex flex-col gap-3 rounded-[22px] border border-line-warm bg-cream p-3 focus-within:ring-2 focus-within:ring-lime sm:flex-row sm:items-end"
         onSubmit={(e) => {
           e.preventDefault();
@@ -290,6 +294,7 @@ export function InterviewChat({ initialSession }: { initialSession: InterviewSes
           </Button>
           {!awaitingConfirmation && (
             <Button
+              data-interview-guide="finish"
               type="button"
               size="sm"
               variant="ghost"
@@ -337,6 +342,7 @@ function SummaryCard({
       {summary.processes.map((p, i) => (
         <div key={i} className="space-y-2 rounded-[14px] border border-line-soft bg-cream p-4 text-sm">
           <div className="font-medium">{p.name}</div>
+          {p.detail_status && <p className="text-xs text-muted">{p.detail_status === "discussed" ? "Обсуждена подробнее" : "Упомянута, детали не разобраны"}</p>}
           {p.steps.length > 0 && (
             <div>
               <span className="font-mono text-[10px] uppercase tracking-wide text-muted">{ru.interview.processSteps}:</span>
@@ -366,6 +372,8 @@ function SummaryCard({
                 {p.volume}
               </div>
             )}
+            {p.frequency && <div><span className="font-mono text-[10px] uppercase tracking-wide text-muted">Частота: </span>{p.frequency}</div>}
+            {p.duration && <div><span className="font-mono text-[10px] uppercase tracking-wide text-muted">Время выполнения: </span>{p.duration}</div>}
             {p.pain && (
               <div>
                 <span className="font-mono text-[10px] uppercase tracking-wide text-muted">{ru.interview.processPain}: </span>

@@ -138,16 +138,41 @@ describe("applyTurn", () => {
     expect(next.facts[0]).toMatchObject({ frequency: "5 раз в день", volume: "30 заявок" });
   });
 
-  it("новая задача добавляет дип-дайв сразу после «Основных задач»", () => {
+  it("сначала собирает задачи, затем разбирает выбранную рутину", () => {
     const s = makeState({ transcript: [userMsg("готовлю отчёты")] });
-    const next = applyTurn(
+    const initial = applyTurn(
       s,
       turn({ extracted_facts: [{ type: "task", name: "Готовка отчётов", source: "" }] }),
     );
     const dd = deepDiveTopic("Готовка отчётов");
+    expect(initial.agenda).not.toContain(dd);
+    initial.coverage.topics[TOPIC_ROLE] = "covered";
+    const next = applyTurn(initial, turn({ dive_task: "Готовка отчётов", coverage_update: { topic: TOPIC_TASKS, status: "covered" } }));
     expect(next.agenda).toContain(dd);
     expect(next.agenda.indexOf(dd)).toBe(next.agenda.indexOf(TOPIC_TASKS) + 1);
     expect(next.coverage.topics[dd]).toBe("open");
+  });
+
+  it("добавляет обнаруженную позже рутину перед следующей открытой темой", () => {
+    const s = makeState({ transcript: [userMsg("После встречи переношу заметки в CRM")] });
+    s.coverage.topics[TOPIC_ROLE] = "covered";
+    s.coverage.topics[TOPIC_TASKS] = "covered";
+    const topic = s.agenda[currentTopicIndex(s)];
+    const next = applyTurn(s, turn({
+      extracted_facts: [{ type: "task", name: "Перенос заметок в CRM", source: "" }],
+      dive_task: "Перенос заметок в CRM",
+      coverage_update: { topic, status: "covered" },
+    }));
+    expect(next.agenda[currentTopicIndex(next)]).toBe(deepDiveTopic("Перенос заметок в CRM"));
+  });
+
+  it("не начинает разбор задачи, которую сотрудник не называл", () => {
+    const s = makeState({ transcript: [userMsg("готовлю отчёты")] });
+    s.coverage.topics[TOPIC_ROLE] = "covered";
+    s.coverage.topics[TOPIC_TASKS] = "covered";
+    const topic = s.agenda[currentTopicIndex(s)];
+    const next = applyTurn(s, turn({ dive_task: "Выдуманная задача", coverage_update: { topic, status: "covered" } }));
+    expect(next.agenda).not.toContain(deepDiveTopic("Выдуманная задача"));
   });
 
   it("применяет coverage_update", () => {
@@ -158,15 +183,17 @@ describe("applyTurn", () => {
     expect(next.coverage.topics[TOPIC_ROLE]).toBe("covered");
   });
 
-  it("закрывает тему после двух follow-up подряд и сбрасывает счётчик", () => {
+  it("число уточнений не закрывает тему", () => {
     let s = makeState({ transcript: [userMsg("a")] });
     s = applyTurn(s, turn({ next_action: "follow_up" }));
     expect(s.coverage.followUps).toBe(1);
     s = applyTurn(s, turn({ next_action: "follow_up" }));
     expect(s.coverage.followUps).toBe(2);
     s = applyTurn({ ...s, transcript: [...s.transcript, userMsg("b")] }, turn({ next_action: "follow_up" }));
-    expect(s.coverage.followUps).toBe(0);
-    expect(s.coverage.topics[TOPIC_ROLE]).toBe("covered");
+    expect(s.coverage.followUps).toBe(3);
+    for (let i = 0; i < 3; i++) s = applyTurn(s, turn({ next_action: "follow_up" }));
+    expect(s.coverage.followUps).toBe(6);
+    expect(s.coverage.topics[TOPIC_ROLE]).toBe("open");
   });
 
   it("помечает сообщение агента темой хода", () => {

@@ -28,7 +28,7 @@ export default function RegisterPage() {
     formState: { errors, isSubmitting },
   } = useForm<RegisterFormInput, unknown, RegisterFormOutput>({
     resolver: zodResolver(registerSchema),
-    defaultValues: { name: "", email: "", password: "", inviteCode: "", orgName: "" },
+    defaultValues: { name: "", email: "", password: "", orgName: "" },
   });
 
   const onSubmit = async (values: RegisterFormOutput) => {
@@ -49,7 +49,7 @@ export default function RegisterPage() {
       redirect: false,
     });
     const me = await fetch("/api/me").then((r) => r.json());
-    router.push(me.role === "OWNER" ? "/dashboard" : "/me");
+    router.push(me.role === "OWNER" ? "/dashboard" : "/me/interview");
     router.refresh();
   };
 
@@ -78,12 +78,6 @@ export default function RegisterPage() {
               <Label htmlFor="password">{ru.auth.password}</Label>
               <Input id="password" type="password" autoComplete="new-password" {...register("password")} />
               <FieldError>{errors.password?.message}</FieldError>
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="inviteCode">{ru.auth.inviteCode}</Label>
-              <Input id="inviteCode" placeholder="PD-XXXXXX" {...register("inviteCode")} />
-              <p className="text-xs text-muted">{ru.auth.inviteCodeHint}</p>
-              <FieldError>{errors.inviteCode?.message}</FieldError>
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="orgName">{ru.auth.orgName}</Label>

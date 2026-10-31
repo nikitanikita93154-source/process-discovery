@@ -161,15 +161,6 @@ export async function routeInterview(
     select: { id: true, title: true, description: true },
     orderBy: { createdAt: "desc" },
   });
-  if (assignedProjects.length === 1) {
-    return {
-      projectId: assignedProjects[0].id,
-      createdCandidates: 0,
-      reason: `Сотрудник назначен владельцем в проект «${assignedProjects[0].title}»`,
-      processLinks: [],
-    };
-  }
-
   const projects = assignedProjects.length > 1 ? assignedProjects : await db.project.findMany({
     where: { orgId },
     select: { id: true, title: true, description: true },
@@ -185,21 +176,7 @@ export async function routeInterview(
   try {
     match = await matchProcesses(employeeName, summary, projects, candidates);
   } catch {
-    // Fallback без LLM: прежнее поведение — последний проект (или создаём под сотрудника)
-    let project = projects[0];
-    if (!project) {
-      project = await db.project.create({
-        data: {
-          orgId,
-          title: `Процесс: ${employeeName}`,
-          description: `Автоматически создан по итогам интервью ${employeeName}`,
-          status: "capturing",
-          origin: "auto_interview",
-          autoReason: "LLM-маршрутизация недоступна: создан fallback-проект для сохранения источника интервью",
-        },
-      });
-    }
-    return { projectId: project.id, createdCandidates: 0, reason: "fallback: без LLM-маршрутизации", processLinks: [] };
+    match = { attachToProjectId: null, links: [], evidenceUpdates: [], newCandidates: [] };
   }
 
   // Доказательства сматченных кандидатов: «кто ещё упомянул»
@@ -215,7 +192,7 @@ export async function routeInterview(
 
   let projectId: string;
   let reason: string;
-  const target = match.attachToProjectId ? projects.find((p) => p.id === match.attachToProjectId) : undefined;
+  const target = assignedProjects.length === 1 ? assignedProjects[0] : match.attachToProjectId ? projects.find((p) => p.id === match.attachToProjectId) : undefined;
   if (target) {
     projectId = target.id;
     reason = match.matchReason ?? `Интервью ${employeeName}: процесс совпал с проектом «${target.title}»`;
@@ -242,7 +219,11 @@ export async function routeInterview(
 
   // Новые процессы → кандидаты (кроме того, что ушёл в созданный проект)
   let created = 0;
-  for (const cand of match.newCandidates) {
+  const unmatched = summary.processes
+    .filter((p) => !match.links.some((l) => titlesSimilar(l.process, p.name)))
+    .filter((p) => !match.newCandidates.some((c) => titlesSimilar(c.title, p.name)))
+    .map((p) => ({ title: p.name, description: p.pain, reason: "Задача из интервью" }));
+  for (const cand of [...match.newCandidates, ...unmatched]) {
     const evidence: EvidenceItem[] = [
       {
         who: `${employeeName} (интервью)`,

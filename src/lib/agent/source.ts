@@ -88,10 +88,10 @@ export async function completeInterview(
     });
 
     // FollowUp-вопросы, вошедшие в повестку, помечаем как заданные
-    const followUpTopics = state.agenda.filter((t) => t.startsWith(FOLLOW_UP_PREFIX));
+    const followUpTopics = state.agenda.filter((t) => t.startsWith(FOLLOW_UP_PREFIX) && state.coverage.topics[t] === "covered");
     for (const topic of followUpTopics) {
       const text = topic.slice(FOLLOW_UP_PREFIX.length);
-      await tx.followUpQuestion.updateMany({ where: { project: { orgId }, text, status: "open" }, data: { status: "asked" } });
+      await tx.followUpQuestion.updateMany({ where: { project: { orgId, participants: { some: { userId: state.userId } } }, text, status: "open" }, data: { status: "asked" } });
     }
 
     // Сотрудник — участник проектов, куда легли его процессы:

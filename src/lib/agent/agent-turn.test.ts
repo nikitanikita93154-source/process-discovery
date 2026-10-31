@@ -91,7 +91,7 @@ describe("agentTurn: guard преждевременного summarize", () => {
     const { turn, state } = await agentTurn(stateWithOneOpenTopic());
 
     expect(turn.next_action).toBe("ask");
-    expect(turn.message).toContain("решения"); // главный вопрос темы «на глазок»
+    expect(turn.message).toBe(mainQuestionForTopic(TOPIC_GUT));
     expect(state.coverage.topics[TOPIC_GUT]).toBe("open");
     expect(state.coverage.vetoCount).toBe(1);
     expect(mockChat).toHaveBeenCalledTimes(1); // второго вызова (резюме) не было
@@ -108,7 +108,7 @@ describe("agentTurn: guard преждевременного summarize", () => {
     const second = await agentTurn(appendUserMessage(first.state, "ещё ответ"));
 
     expect(second.state.status).toBe(SESSION_STATUS.AWAITING_CONFIRMATION);
-    expect(second.state.coverage.topics[TOPIC_GUT]).toBe("covered");
+    expect(second.state.coverage.topics[TOPIC_GUT]).toBe("skipped");
     expect(second.state.coverage.vetoCount).toBe(0);
     expect(second.state.summary).not.toBeNull();
   });
@@ -147,7 +147,7 @@ describe("agentTurn: guard преждевременного summarize", () => {
     expect(second.state.coverage.vetoCount).toBe(0); // тема закрыта — прогресс
   });
 
-  it("дословный повтор вопроса закрывает тему и переключает на следующую", async () => {
+  it("дословный повтор вопроса сохраняет тему и предлагает конкретный пример", async () => {
     const s = stateWithTwoOpenTopics("Сколько писем?");
     mockChat.mockResolvedValueOnce({
       message: "сколько   писем?", // нормализация: регистр и пробелы
@@ -156,19 +156,18 @@ describe("agentTurn: guard преждевременного summarize", () => {
     } as never);
 
     const { turn, state } = await agentTurn(s);
-    // первая открытая тема (Передачи) закрыта, вопрос — про следующую (на глазок)
-    expect(state.coverage.topics[TOPIC_HANDOFFS]).toBe("covered");
-    expect(turn.message).toBe(mainQuestionForTopic(TOPIC_GUT));
+    expect(state.coverage.topics[TOPIC_HANDOFFS]).toBe("open");
+    expect(turn.message).toContain("конкретном примере");
     expect(mockChat).toHaveBeenCalledTimes(1);
   });
 
-  it("дословный повтор на последней открытой теме — сразу резюме", async () => {
+  it("дословный повтор на последней теме не завершает интервью", async () => {
     const s = stateWithOneOpenTopic("Сколько писем?");
     mockChat.mockResolvedValueOnce({ message: "Сколько писем?", extracted_facts: [], next_action: "ask" } as never)
       .mockResolvedValueOnce(summaryPayload as never);
 
     const { state } = await agentTurn(s);
-    expect(state.status).toBe(SESSION_STATUS.AWAITING_CONFIRMATION);
-    expect(state.coverage.topics[TOPIC_GUT]).toBe("covered");
+    expect(state.status).toBe(SESSION_STATUS.IN_PROGRESS);
+    expect(state.coverage.topics[TOPIC_GUT]).toBe("open");
   });
 });

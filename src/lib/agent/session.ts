@@ -1,5 +1,4 @@
 import {
-  INTERVIEW_LIMIT_MS,
   coverageSchema,
   factSchema,
   interviewSummarySchema,
@@ -54,6 +53,5 @@ export function sessionSnapshot(state: InterviewState) {
     topicNumber: Math.min(idx + 1, state.agenda.length),
     topicsTotal: state.agenda.length,
     elapsedMs: Date.now() - new Date(state.startedAt).getTime(),
-    limitMs: INTERVIEW_LIMIT_MS,
   };
 }

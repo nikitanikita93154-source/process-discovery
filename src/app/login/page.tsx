@@ -35,7 +35,7 @@ export default function LoginPage() {
       return;
     }
     const me = await fetch("/api/me").then((r) => r.json());
-    router.push(me.role === "OWNER" ? "/dashboard" : "/me");
+    router.push(me.role === "OWNER" ? "/dashboard" : "/me/interview");
     router.refresh();
   };
 

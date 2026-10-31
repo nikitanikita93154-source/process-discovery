@@ -63,7 +63,7 @@ describe("sessionSnapshot", () => {
     expect(snap.topicNumber).toBe(1);
     expect(snap.topicsTotal).toBe(3);
     expect(snap.sessionId).toBe("s1");
-    expect(snap.limitMs).toBeGreaterThan(0);
+    expect(snap).not.toHaveProperty("limitMs");
   });
 
   it("когда всё закрыто — текущая тема резюме", () => {

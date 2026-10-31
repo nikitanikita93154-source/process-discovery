@@ -44,6 +44,7 @@ export const agentTurnSchema = z.object({
     })
     .optional(),
   next_action: z.enum(["ask", "follow_up", "summarize"]),
+  dive_task: z.string().optional(),
 });
 export type AgentTurn = z.infer<typeof agentTurnSchema>;
 
@@ -83,7 +84,10 @@ export const interviewSummarySchema = z.object({
         systems: z.array(z.string()).default([]),
         // пустая строка = не звучало в беседе (модель не должна выдумывать)
         volume: z.string().default(""),
+        frequency: z.string().optional(),
+        duration: z.string().optional(),
         pain: z.string().default(""),
+        detail_status: z.enum(["discussed", "mentioned"]).optional(),
       }),
     )
     .default([]),
@@ -103,5 +107,3 @@ export const confirmRequestSchema = z.object({
   sessionId: z.string(),
 });
 
-/** Лимит сессии интервью. */
-export const INTERVIEW_LIMIT_MS = 20 * 60 * 1000;

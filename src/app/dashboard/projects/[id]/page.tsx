@@ -148,10 +148,10 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <Link href="/dashboard/projects" className="mb-5 inline-block text-sm text-muted hover:text-ink hover:underline">
+          <Link href="/dashboard/projects/processes" className="mb-5 inline-block text-sm text-muted hover:text-ink hover:underline">
             {ru.project.backToProjects}
           </Link>
-          <div className="space-y-2"><Eyebrow>SYNAPT · ПРОЕКТ</Eyebrow><PageTitle>{project.title}</PageTitle></div>
+          <div className="space-y-2"><Eyebrow>SYNAPT · ПРОЦЕСС</Eyebrow><PageTitle>{project.title}</PageTitle></div>
           <div className="mt-4 flex flex-wrap items-center gap-2 text-sm text-muted">
             <Badge variant={statusBadgeVariant(project.status)}>{statusLabel(project.status)}</Badge>
             {project.description && <span>{project.description}</span>}

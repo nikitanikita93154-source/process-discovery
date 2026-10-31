@@ -5,7 +5,6 @@ import { requireApiUser } from "@/lib/guards";
 import { LLMError } from "@/lib/llm";
 import {
   ACTIVE_SESSION_STATUSES,
-  INTERVIEW_LIMIT_MS,
   SESSION_STATUS,
   streamRequestSchema,
   type AgentTurn,
@@ -18,7 +17,6 @@ import {
   applySummaryCorrection,
   hasPendingUserMessage,
   summarize,
-  timeLimitExceeded,
   type InterviewState,
 } from "@/lib/agent/interview";
 
@@ -43,6 +41,9 @@ export async function POST(req: Request) {
     const user = await requireApiUser();
     const body = await parseBody(req, streamRequestSchema);
 
+    const completed = await db.interviewSession.findFirst({ where: { userId: user.id, status: SESSION_STATUS.COMPLETED }, select: { id: true } });
+    if (completed) throw new ApiError(400, "Интервью уже завершено");
+
     // --- Загрузка или создание сессии ---
     let row = body.sessionId
       ? await db.interviewSession.findFirst({
@@ -54,10 +55,12 @@ export async function POST(req: Request) {
         });
 
     if (row && row.status === SESSION_STATUS.COMPLETED) throw new ApiError(400, "Интервью уже завершено");
+    if (body.sessionId && !row) throw new ApiError(404, "Сессия не найдена");
+    if (row && !ACTIVE_SESSION_STATUSES.includes(row.status as (typeof ACTIVE_SESSION_STATUSES)[number])) throw new ApiError(400, "Сессия недоступна");
 
     if (!row) {
       const openFollowUps = await db.followUpQuestion.findMany({
-        where: { project: { orgId: user.orgId }, status: "open" },
+        where: { project: { orgId: user.orgId, participants: { some: { userId: user.id } } }, status: "open" },
         take: 5,
         orderBy: { createdAt: "asc" },
       });
@@ -113,8 +116,12 @@ export async function POST(req: Request) {
           // --- Досрочное завершение (STOP) или временной лимит: резюме ---
           if (
             state.status === SESSION_STATUS.IN_PROGRESS &&
-            (body.command === "STOP" || timeLimitExceeded(state, INTERVIEW_LIMIT_MS))
+            body.command === "STOP"
           ) {
+            if (body.message) {
+              state = appendUserMessage(state, body.message);
+              await persist(state);
+            }
             await finishWithSummary(state);
             return;
           }

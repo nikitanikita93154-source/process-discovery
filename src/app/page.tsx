@@ -29,7 +29,7 @@ export default async function LandingPage() {
             <Link href="/login" className={cn(buttonVariants({ size: "lg" }), "text-lime")}>{ru.landing.ctaLogin}<ArrowUpRight className="h-4 w-4" /></Link>
             <Link href="/register" className={buttonVariants({ variant: "outline", size: "lg" })}>{ru.landing.ctaRegister}</Link>
           </div>
-          <p className="mt-5 text-sm text-muted">Есть код приглашения? Укажите его при регистрации.</p>
+          <p className="mt-5 text-sm text-muted">Сотрудникам для входа нужна ссылка от руководителя.</p>
         </div>
         <div className="relative overflow-hidden rounded-[22px] border border-line-warm bg-paper p-7 sm:p-9">
           <div className="flex items-center justify-between"><Eyebrow>От диалога к действию</Eyebrow><ArrowUpRight className="h-5 w-5 text-accent" /></div>

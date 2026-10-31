@@ -3,7 +3,7 @@ import {
   CORE_TOPICS,
   DEEP_DIVE_PREFIX,
   FOLLOW_UP_PREFIX,
-  MAX_DEEP_DIVES,
+  TOPIC_REVIEW,
   TOPIC_GUT,
   TOPIC_ROLE,
   TOPIC_SUMMARY,
@@ -20,6 +20,7 @@ describe("buildAgenda", () => {
     expect(topics).toEqual([
       ...CORE_TOPICS.map((t) => t.title),
       `${FOLLOW_UP_PREFIX}Про Эксель?`,
+      TOPIC_REVIEW,
       TOPIC_SUMMARY,
     ]);
   });
@@ -58,11 +59,11 @@ describe("mainQuestionForTopic", () => {
 describe("extendAgendaWithTasks", () => {
   const emptyCoverage: Record<string, "open" | "covered" | "skipped"> = {};
 
-  it("вставляет дип-дайв после «Основных задач»", () => {
+  it("вставляет выбранную задачу перед следующей открытой темой", () => {
     const agenda = buildAgenda([]).topics;
-    const res = extendAgendaWithTasks(agenda, emptyCoverage, ["Задача 1"]);
+    const res = extendAgendaWithTasks(agenda, { ...emptyCoverage, [TOPIC_TASKS]: "covered", [TOPIC_GUT]: "open" }, ["Задача 1"]);
     expect(res).not.toBeNull();
-    expect(res!.agenda.indexOf(deepDiveTopic("Задача 1"))).toBe(agenda.indexOf(TOPIC_TASKS) + 1);
+    expect(res!.agenda.indexOf(deepDiveTopic("Задача 1"))).toBe(agenda.indexOf(TOPIC_GUT));
     expect(res!.coverage[deepDiveTopic("Задача 1")]).toBe("open");
   });
 
@@ -72,15 +73,14 @@ describe("extendAgendaWithTasks", () => {
     expect(extendAgendaWithTasks(once.agenda, once.coverage, ["задача 1"])).toBeNull();
   });
 
-  it("ограничивает число дип-дайвов MAX_DEEP_DIVES", () => {
+  it("позволяет разбирать больше трёх задач", () => {
     let agenda = buildAgenda([]).topics;
     let coverage = emptyCoverage;
-    for (let i = 1; i <= MAX_DEEP_DIVES; i++) {
+    for (let i = 1; i <= 5; i++) {
       const res = extendAgendaWithTasks(agenda, coverage, [`Задача ${i}`])!;
       agenda = res.agenda;
       coverage = res.coverage;
     }
-    expect(agenda.filter((t) => t.startsWith(DEEP_DIVE_PREFIX))).toHaveLength(MAX_DEEP_DIVES);
-    expect(extendAgendaWithTasks(agenda, coverage, ["Задача 4"])).toBeNull();
+    expect(agenda.filter((t) => t.startsWith(DEEP_DIVE_PREFIX))).toHaveLength(5);
   });
 });

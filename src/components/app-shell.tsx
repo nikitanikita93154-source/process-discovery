@@ -12,8 +12,7 @@ const employeeNav = [
 ];
 
 const ownerNav = [
-  { href: "/dashboard", label: ru.nav.dashboard },
-  { href: "/dashboard/team", label: ru.nav.team },
+  { href: "/dashboard", label: ru.nav.team },
   { href: "/dashboard/projects", label: ru.nav.projects },
   { href: "/dashboard/analytics", label: ru.nav.analytics },
 ];

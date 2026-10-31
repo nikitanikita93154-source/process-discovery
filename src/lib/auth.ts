@@ -3,6 +3,7 @@ import Credentials from "next-auth/providers/credentials";
 import bcrypt from "bcryptjs";
 import { db } from "@/lib/db";
 import { loginSchema } from "@/lib/schemas/auth";
+import { authenticateInvitation } from "@/lib/invitation-auth";
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   session: { strategy: "jwt" },
@@ -32,6 +33,12 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           orgId: user.orgId,
         };
       },
+    }),
+    Credentials({
+      id: "invitation",
+      name: "invitation",
+      credentials: { name: {}, email: {}, inviteCode: {} },
+      authorize: authenticateInvitation,
     }),
   ],
   callbacks: {
