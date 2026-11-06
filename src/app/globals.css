@@ -22,14 +22,14 @@
 }
 
 @theme inline {
-  --font-head: var(--font-unbounded), system-ui, sans-serif;
-  --font-body: var(--font-golos), system-ui, sans-serif;
-  --font-sans: var(--font-golos), system-ui, sans-serif;
-  --font-mono: var(--font-jetbrains), monospace;
+  --font-head: var(--font-manrope), system-ui, sans-serif;
+  --font-body: var(--font-manrope), system-ui, sans-serif;
+  --font-sans: var(--font-manrope), system-ui, sans-serif;
+  --font-mono: var(--font-manrope), system-ui, sans-serif;
 }
 
 @layer base {
-  body { background: #fff; color: var(--color-ink); font-family: var(--font-golos), system-ui, sans-serif; }
+  body { background: #fff; color: var(--color-ink); font-family: var(--font-manrope), system-ui, sans-serif; }
   ::selection { background: var(--color-lime); color: var(--color-ink); }
   button, a, input, textarea, select { -webkit-tap-highlight-color: transparent; }
   :focus-visible { outline: 2px solid var(--color-ink); outline-offset: 4px; }

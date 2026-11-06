@@ -3,8 +3,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("@/lib/llm", () => ({ chat: vi.fn() }));
 
 import { chat } from "@/lib/llm";
-import { agentTurn, appendUserMessage, type InterviewState } from "@/lib/agent/interview";
-import { TOPIC_GUT, TOPIC_HANDOFFS, TOPIC_SUMMARY, buildAgenda, mainQuestionForTopic } from "@/lib/agent/agenda";
+import { agentTurn, appendUserMessage, factsFromConfirmedSummary, type InterviewState } from "@/lib/agent/interview";
+import { TOPIC_GUT, TOPIC_HANDOFFS, TOPIC_SUMMARY, TOPIC_TASKS, buildAgenda, deepDiveTopic, mainQuestionForTopic } from "@/lib/agent/agenda";
 import { SESSION_STATUS, type AgentTurn, type TranscriptItem } from "@/lib/schemas/interview";
 
 const mockChat = vi.mocked(chat);
@@ -70,6 +70,70 @@ const summaryPayload = {
 
 beforeEach(() => {
   mockChat.mockReset();
+});
+
+describe("глубина интервью", () => {
+  it("формирует факты для источника только из исправленного резюме", () => {
+    const facts = factsFromConfirmedSummary({ processes: [{ name: "Отчёты", steps: ["Сверяет данные"], actors: [], systems: [], volume: "", pain: "", duration: "10 минут" }], open_questions: [] });
+    expect(facts.map((fact) => fact.name)).toEqual(["Отчёты", "Сверяет данные"]);
+    expect(facts[0].duration).toBe("10 минут");
+  });
+  it("не закрывает разбор, пока не описаны действия", async () => {
+    const s = stateWithOneOpenTopic();
+    const topic = deepDiveTopic("Отчёты");
+    s.agenda.splice(s.agenda.indexOf(TOPIC_GUT), 0, topic);
+    s.coverage.topics[topic] = "open";
+    mockChat.mockResolvedValueOnce({ message: "Дальше", extracted_facts: [], next_action: "ask", coverage_update: { topic, status: "covered" }, dive_updates: [{ field: "input", status: "known" }] } as never);
+    const result = await agentTurn(s);
+    expect(result.state.coverage.topics[topic]).toBe("open");
+    expect(result.state.coverage.dives?.[topic]?.input).toBe("known");
+    expect(result.turn.message).toContain("Что вы сделали сначала?");
+  });
+
+  it("сохраняет отказ и позволяет завершить разбор", async () => {
+    const s = stateWithOneOpenTopic();
+    const topic = deepDiveTopic("Отчёты");
+    s.agenda.splice(s.agenda.indexOf(TOPIC_GUT), 0, topic);
+    s.coverage.topics[topic] = "open";
+    mockChat.mockResolvedValueOnce({ message: "Хорошо.\n\nПродолжим?", extracted_facts: [], next_action: "ask", answer_kind: "decline", coverage_update: { topic, status: "covered" }, dive_updates: [{ field: "actions", status: "declined" }] } as never);
+    const result = await agentTurn(s);
+    expect(result.state.coverage.topics[topic]).toBe("covered");
+    expect(result.state.coverage.dives?.[topic]?.actions).toBe("declined");
+  });
+
+  it("не добавляет четвёртый разбор и не задаёт вопрос об отклонённой задаче", async () => {
+    const s = stateWithOneOpenTopic();
+    s.coverage.topics[TOPIC_TASKS] = "covered";
+    for (const name of ["А", "Б", "В"]) { const t = deepDiveTopic(name); s.agenda.unshift(t); s.coverage.topics[t] = "covered"; }
+    s.facts.push({ type: "task", name: "Г", source: "msg#1" });
+    mockChat.mockResolvedValueOnce({ message: "Разберём Г?", extracted_facts: [], next_action: "ask", dive_task: "Г", coverage_update: { topic: TOPIC_GUT, status: "covered" } } as never);
+    const result = await agentTurn(s);
+    expect(result.state.agenda).not.toContain(deepDiveTopic("Г"));
+    expect(result.turn.message).not.toContain("Разберём Г");
+  });
+
+  it("после четырёх коротких содержательных ответов один раз просит подробнее", async () => {
+    const s = stateWithOneOpenTopic();
+    s.coverage.shortAnswers = 3;
+    mockChat.mockResolvedValueOnce({ message: "Как часто?", extracted_facts: [], next_action: "follow_up", answer_kind: "short_substantive" } as never);
+    const result = await agentTurn(s);
+    expect(result.turn.message).toContain("чуть подробнее");
+    expect(result.state.coverage.detailPrompted).toBe(true);
+    mockChat.mockResolvedValueOnce({ message: "Что дальше?", extracted_facts: [], next_action: "follow_up", answer_kind: "short_substantive" } as never);
+    const next = await agentTurn(appendUserMessage(result.state, "готовлю отчёты"));
+    expect(next.turn.message).toBe("Что дальше?");
+  });
+
+  it("отбрасывает выдуманных кандидатов и неверные ссылки на сообщения", async () => {
+    const s = stateWithOneOpenTopic();
+    s.facts.push({ type: "task", name: "Отчёты", source: "msg#1" });
+    mockChat.mockResolvedValueOnce({ message: "Как часто?", extracted_facts: [], next_action: "follow_up", candidates: [
+      { task: "Отчёты", evidence: [{ description: "ежедневно", source: "msg#99" }, { description: "ручная работа", source: "msg#1" }] },
+      { task: "Выдуманная задача", evidence: [{ description: "рутина", source: "msg#1" }] },
+    ] } as never);
+    const result = await agentTurn(s);
+    expect(result.state.coverage.candidates).toEqual([{ task: "Отчёты", evidence: [{ description: "ручная работа", source: "msg#1" }] }]);
+  });
 });
 
 describe("agentTurn: guard преждевременного summarize", () => {

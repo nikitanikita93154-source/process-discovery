@@ -14,12 +14,13 @@ export async function POST(req: Request) {
 
     const row = await db.interviewSession.findFirst({ where: { id: sessionId, userId: user.id } });
     if (!row) throw new ApiError(404, "Сессия не найдена");
-    if (row.status === SESSION_STATUS.COMPLETED) {
+    if (row.status === SESSION_STATUS.COMPLETED && row.projectId) {
       return NextResponse.json({ ok: true, alreadyCompleted: true });
     }
     if (!row.summary) throw new ApiError(400, "Резюме ещё не сформировано");
 
     const state = loadInterviewState(row, user.name ?? "Сотрудник");
+    if (state.transcript.at(-1)?.role === "user") throw new ApiError(409, "Последняя правка ещё обрабатывается. Повторите её перед подтверждением.");
     const { projectId } = await completeInterview(state);
     return NextResponse.json({ ok: true, projectId });
   });

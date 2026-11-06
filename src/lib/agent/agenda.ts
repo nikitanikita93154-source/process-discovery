@@ -31,11 +31,11 @@ export const CORE_TOPICS: TopicDef[] = [
   {
     title: TOPIC_ROLE,
     // должность и отдел спрашиваем явно — иначе department в резюме пустует
-    mainQuestion: "Кем вы работаете — должность и отдел — и какой у вас функционал в компании?",
+    mainQuestion: "Кем вы работаете?\n\nЕсли удобно, укажите должность, отдел и основные обязанности.",
   },
   { title: TOPIC_TASKS, mainQuestion: "Какие задачи вы регулярно выполняете за день, неделю или месяц, включая небольшую рутину?" },
   { title: TOPIC_HANDOFFS, mainQuestion: "Чего или кого вы чаще всего ждёте в работе и что делаете в это время?" },
-  { title: TOPIC_ERRORS, mainQuestion: "В каких задачах случаются ошибки или переделки, и из-за чего?" },
+  { title: TOPIC_ERRORS, mainQuestion: "В каких задачах случаются ошибки или переделки?" },
   {
     title: TOPIC_GUT,
     // вторая часть — инсайдерская подсказка: сотрудник сам называет кандидата на автоматизацию
@@ -71,7 +71,7 @@ export function buildAgenda(followUps: string[]): Agenda {
 export function mainQuestionForTopic(topic: string): string {
   const known = MAIN_QUESTIONS[topic];
   if (known) return known;
-  if (topic === TOPIC_REVIEW) return "Мы обсудили ваши задачи. Есть ли ещё повторяющаяся работа, которую мы не упомянули?";
+  if (topic === TOPIC_REVIEW) return "Мы обсудили ваши задачи.\n\nЕсть ли ещё повторяющаяся работа, которую мы не упомянули?";
   const dd = topic.startsWith(DEEP_DIVE_PREFIX) ? topic.slice(DEEP_DIVE_PREFIX.length) : null;
   if (dd) return `Вспомните последний раз, когда вы выполняли задачу «${dd}»: что произошло от начала до результата?`;
   if (topic.startsWith(FOLLOW_UP_PREFIX)) return topic.slice(FOLLOW_UP_PREFIX.length);

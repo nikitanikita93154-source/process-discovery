@@ -50,12 +50,17 @@ describe("hoursFromFacts", () => {
     ]);
     // 5/нед × 20 мин × 52 / 60 ≈ 86,67 ч/год
     const r = hoursFromFacts({ name: "Шаг" } as MapStep, idx);
-    expect(r?.estimate).toBe(false);
+    expect(r?.estimate).toBe(true);
     expect(r?.hours).toBeCloseTo((5 * 20 * 52) / 60, 5);
   });
 
   it("длительность без частоты не даёт часов — null", () => {
     const idx = buildInterviewIndex([source({ candidateSteps: [{ name: "Шаг", duration: "30 минут" }] })]);
+    expect(hoursFromFacts({ name: "Шаг" } as MapStep, idx)).toBeNull();
+  });
+
+  it("объём без частоты не превращается в количество выполнений", () => {
+    const idx = buildInterviewIndex([source({ candidateSteps: [{ name: "Шаг", volume: "10 раз в день", duration: "30 минут" }] })]);
     expect(hoursFromFacts({ name: "Шаг" } as MapStep, idx)).toBeNull();
   });
 });

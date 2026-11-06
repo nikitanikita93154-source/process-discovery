@@ -33,6 +33,10 @@ export const factSchema = z.object({
 });
 export type Fact = z.infer<typeof factSchema>;
 
+const diveFieldSchema = z.enum(["input", "actions", "result", "tools", "participants", "frequency", "duration", "exceptions", "difficulties"]);
+const diveStatusSchema = z.enum(["known", "unknown", "declined"]);
+const candidateSchema = z.object({ task: z.string(), evidence: z.array(z.object({ description: z.string(), source: z.string() })) });
+
 /** Строгий JSON-выход одного хода агента. */
 export const agentTurnSchema = z.object({
   message: z.string().min(1),
@@ -45,6 +49,9 @@ export const agentTurnSchema = z.object({
     .optional(),
   next_action: z.enum(["ask", "follow_up", "summarize"]),
   dive_task: z.string().optional(),
+  candidates: z.array(candidateSchema).optional(),
+  dive_updates: z.array(z.object({ field: diveFieldSchema, status: diveStatusSchema })).optional(),
+  answer_kind: z.enum(["short_substantive", "substantive", "other", "decline"]).optional(),
 });
 export type AgentTurn = z.infer<typeof agentTurnSchema>;
 
@@ -53,6 +60,10 @@ export const coverageSchema = z.object({
   topics: z.record(z.string(), z.enum(["open", "covered", "skipped"])),
   followUps: z.number().int().default(0),
   vetoCount: z.number().int().default(0),
+  dives: z.record(z.string(), z.partialRecord(diveFieldSchema, diveStatusSchema)).optional(),
+  shortAnswers: z.number().int().optional(),
+  detailPrompted: z.boolean().optional(),
+  candidates: z.array(candidateSchema).optional(),
 });
 export type Coverage = z.infer<typeof coverageSchema>;
 

@@ -42,11 +42,15 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     }),
   ],
   callbacks: {
-    jwt({ token, user }) {
+    async jwt({ token, user }) {
       if (user) {
         token.id = user.id as string;
         token.role = (user as { role?: string }).role ?? "EMPLOYEE";
         token.orgId = (user as { orgId?: string }).orgId ?? "";
+      }
+      if (!user && token.id) {
+        const current = await db.user.findUnique({ where: { id: String(token.id) }, select: { id: true, orgId: true, role: true } });
+        if (!current || current.orgId !== token.orgId || current.role !== token.role) return null;
       }
       return token;
     },

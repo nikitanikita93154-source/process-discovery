@@ -41,7 +41,7 @@ export async function POST(req: Request) {
     const user = await requireApiUser();
     const body = await parseBody(req, streamRequestSchema);
 
-    const completed = await db.interviewSession.findFirst({ where: { userId: user.id, status: SESSION_STATUS.COMPLETED }, select: { id: true } });
+    const completed = await db.interviewSession.findFirst({ where: { userId: user.id, status: SESSION_STATUS.COMPLETED, projectId: { not: null } }, select: { id: true } });
     if (completed) throw new ApiError(400, "Интервью уже завершено");
 
     // --- Загрузка или создание сессии ---
@@ -50,13 +50,13 @@ export async function POST(req: Request) {
           where: { id: body.sessionId, userId: user.id },
         })
       : await db.interviewSession.findFirst({
-          where: { userId: user.id, status: { in: [...ACTIVE_SESSION_STATUSES] } },
+          where: { userId: user.id, OR: [{ status: { in: [...ACTIVE_SESSION_STATUSES] } }, { status: SESSION_STATUS.COMPLETED, projectId: null }] },
           orderBy: { startedAt: "desc" },
         });
 
-    if (row && row.status === SESSION_STATUS.COMPLETED) throw new ApiError(400, "Интервью уже завершено");
+    if (row && row.status === SESSION_STATUS.COMPLETED && row.projectId) throw new ApiError(400, "Интервью уже завершено");
     if (body.sessionId && !row) throw new ApiError(404, "Сессия не найдена");
-    if (row && !ACTIVE_SESSION_STATUSES.includes(row.status as (typeof ACTIVE_SESSION_STATUSES)[number])) throw new ApiError(400, "Сессия недоступна");
+    if (row && !ACTIVE_SESSION_STATUSES.includes(row.status as (typeof ACTIVE_SESSION_STATUSES)[number]) && !(row.status === SESSION_STATUS.COMPLETED && !row.projectId && row.summary)) throw new ApiError(400, "Сессия недоступна");
 
     if (!row) {
       const openFollowUps = await db.followUpQuestion.findMany({
@@ -81,6 +81,7 @@ export async function POST(req: Request) {
     }
 
     const state0 = loadInterviewState(row, user.name ?? "Сотрудник");
+    if (state0.status === SESSION_STATUS.COMPLETED && !row.projectId && state0.summary) state0.status = SESSION_STATUS.AWAITING_CONFIRMATION;
 
     const encoder = new TextEncoder();
     const stream = new ReadableStream<Uint8Array>({
@@ -128,11 +129,14 @@ export async function POST(req: Request) {
 
           // --- Резюме ждёт подтверждения: правка замечанием или повторная отправка ---
           if (state.status === SESSION_STATUS.AWAITING_CONFIRMATION) {
-            if (body.message && state.summary) {
+            if (state.summary && (body.message || hasPendingUserMessage(state))) {
               // Замечание попадает в транскрипт ровно один раз и сохраняется до вызова LLM
-              state = appendUserMessage(state, body.message);
-              await persist(state);
-              const { turn, state: s } = await applySummaryCorrection(state, body.message);
+              if (body.message) {
+                state = appendUserMessage(state, body.message);
+                await persist(state);
+              }
+              const correction = state.transcript.at(-1)!.text;
+              const { turn, state: s } = await applySummaryCorrection(state, correction);
               state = s;
               await persist(state);
               emitTurn(state, turn);
@@ -170,8 +174,8 @@ export async function POST(req: Request) {
           console.error("[interview/stream]", e);
           const message =
             e instanceof LLMError
-              ? "Извините, возникла техническая заминка на нашей стороне. Сессия сохранена — попробуйте отправить сообщение ещё раз."
-              : "Извините, произошла ошибка. Сессия сохранена, ваши ответы не потеряны. Попробуйте продолжить.";
+              ? "Возникла техническая заминка. Проверьте последний ответ и попробуйте отправить его ещё раз."
+              : "Произошла ошибка. Проверьте последний ответ и попробуйте отправить его ещё раз.";
           send("error", { message });
           send("done", { error: true });
           controller.close();

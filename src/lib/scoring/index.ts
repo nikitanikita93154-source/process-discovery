@@ -129,12 +129,12 @@ export function hoursFromFacts(
 ): { hours: number; estimate: boolean } | null {
   const fact = interviewIndex.entries.get(norm(step.name));
   if (fact) {
-    const perWeek = matchFrequencyText(fact.frequency) ?? matchFrequencyText(fact.volume);
+    const perWeek = matchFrequencyText(fact.frequency);
     if (perWeek !== null) {
       // из интервью известна частота; длительность — из факта,
       // если звучала, иначе средняя константа
       const minutes = matchDurationText(fact.duration) ?? AVG_STEP_MINUTES;
-      return { hours: (perWeek * minutes * 52) / 60, estimate: false };
+      return { hours: (perWeek * minutes * 52) / 60, estimate: matchDurationText(fact.duration) === null };
     }
   }
   return null;

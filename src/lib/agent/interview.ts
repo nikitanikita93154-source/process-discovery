@@ -87,6 +87,7 @@ function numberedTranscript(transcript: TranscriptItem[]): (string | null)[] {
 }
 
 const MAX_CONTEXT_MESSAGES = 30;
+const MAX_DIVES = 3;
 
 /** Сколько вето подряд на преждевременный summarize терпим до форс-закрытия тем. */
 export const MAX_SUMMARIZE_VETORES = 2;
@@ -145,8 +146,12 @@ ${topicsList}
 
 УЖЕ ИЗВЛЕЧЁННЫЕ ФАКТЫ: ${factsSoFar || "пока нет"}
 
+ПОКРЫТИЕ РАЗБОРА ПО ЗАДАЧАМ: ${JSON.stringify(state.coverage.dives ?? {})}
+КАНДИДАТЫ И УКАЗАННЫЕ ПРИЗНАКИ (проверь по ответам сотрудника): ${JSON.stringify(state.coverage.candidates ?? [])}
+УЖЕ ДОБАВЛЕНО РАЗБОРОВ: ${state.agenda.filter((t) => t.startsWith(DEEP_DIVE_PREFIX)).length} из ${MAX_DIVES}.
+
 ПРАВИЛА (строго):
-1. Задавай ровно один вопрос за ход. Это короткий живой человеческий вопрос (1–2 предложения) — без длинных вводных конструкций, перечислений и нескольких вопросов сразу.
+1. Задавай один короткий вопрос за ход. Подтверждение ответа пиши отдельным абзацем, вопрос — следующим. Если связанные уточнения необходимы, каждое пиши с новой строки. Не приписывай коротким текстовым ответам проблемы со связью.
 2. Первый вопрос по новой теме — её широкий главный вопрос:
 ${mainQuestions}
    Для темы «${DEEP_DIVE_PREFIX}X» попроси описать последний конкретный случай выполнения задачи от начала до результата.
@@ -160,11 +165,13 @@ ${mainQuestions}
    - решения по опыту/интуиции без данных — факты type="decision", НЕ step.
    - НЕ извлекай факт, если такой по смыслу уже есть в «УЖЕ ИЗВЛЕЧЁННЫХ ФАКТАХ», даже в другой формулировке.
    Выделяй все названные повторяющиеся задачи как отдельные факты type="task", в любой теме. Спроси и о небольшой рутине, и о еженедельных или ежемесячных задачах. Перед завершением уточни, не забыли ли какую-либо задачу.
-6. После сбора основных задач выбирай для разбора повторяющуюся ручную рутину: перенос данных, CRM, шаблоны, отчёты, сверки, напоминания. Не выбирай похожие задачи повторно. Укажи точное название уже названной сотрудником задачи в dive_task и задай вопрос о последнем конкретном случае. Для каждой выбранной задачи выясни ручные шаги, системы, частоту и время, задавая вопросы по одному. Если рутина всплыла в ходе другой темы, уточняй её сразу, не повторяя уже известное. Не выдумывай данные. Не задавай dive_task, пока не закрыта тема основных задач; не выбирай новую задачу пока текущая тема не закрыта.
+6. После сбора основных задач выбирай до трёх наиболее перспективных для автоматизации разных задач. Ориентируйся на известные повторяемость, ручные и однотипные действия, правила, частоту, объём, время, перенос данных, ошибки и переделки. Не выдумывай признаки и не выставляй оценку. При недостатке сведений задай один сравнительный вопрос; если сотрудник не знает, выбирай по имеющимся данным. В candidates перечисли кандидатов с точными названиями и признаками, каждый с source="msg#N" из ответа сотрудника; в dive_task укажи выбранное точное название. Не выбирай уже разобранную или похожую задачу, не выбирай новую пока текущая не закрыта. Для неё попроси последний реальный случай и выясняй по одному вход, действия, результат, инструменты, участников, частоту, длительность, исключения и трудности. Не повторяй известное и не переноси сведения другой задачи.
 7. Когда тема раскрыта — coverage_update: {topic, status:"covered"} и в том же ходе задай главный вопрос следующей открытой темы. Если сотрудник говорит, что тема к нему не относится, — пометь её skipped и переходи дальше.
 8. next_action="summarize" разрешён ТОЛЬКО когда все темы повестки, кроме «${TOPIC_SUMMARY}», имеют статус covered или skipped. Никогда не помечай тему covered без содержательных ответов сотрудника.
 9. Перед завершением в теме «${TOPIC_REVIEW}» кратко перечисли найденные задачи и спроси, не забыта ли другая рутина. Если сотрудник дополнил список, извлеки факты и при необходимости разбери новые задачи. Если транскрипт пуст, коротко представься и задай первый вопрос без обещания длительности.
-10. Отвечай СТРОГО JSON по схеме без какого-либо текста вокруг.`;
+10. Для текущего разбора обновляй dive_updates только по сведениям последнего ответа: field из схемы и status known, unknown (сотрудник не знает) или declined (не хочет отвечать). Не закрывай разбор до описания конкретных действий, кроме отказа или невозможности ответить. Уважай просьбу завершить или сменить тему.
+11. Классифицируй последний ответ в answer_kind: short_substantive (содержательный ответ не более 10 слов), substantive, other (подтверждение, команда, техническая реплика) или decline (отказ). Не оценивай сотрудника.
+12. Отвечай СТРОГО JSON по схеме без какого-либо текста вокруг.`;
 }
 
 function userContextPrompt(state: InterviewState): string {
@@ -227,7 +234,10 @@ export function applyTurn(state: InterviewState, turn: AgentTurn): InterviewStat
 
   // Разбираем только выбранную моделью уже названную задачу после сбора списка.
   const selected = turn.dive_task && facts.find((f) => f.type === "task" && normalizeText(f.name) === normalizeText(turn.dive_task!));
-  if (selected && topics[TOPIC_TASKS] !== "open" && (turn.coverage_update || state.agenda[currentTopicIndex(state)] === TOPIC_REVIEW)) {
+  const diveCount = agenda.filter((t) => t.startsWith(DEEP_DIVE_PREFIX)).length;
+  const currentTopic = state.agenda[currentTopicIndex(state)];
+  const currentDiveOpen = currentTopic?.startsWith(DEEP_DIVE_PREFIX) && topics[currentTopic] === "open";
+  if (selected && diveCount < MAX_DIVES && !currentDiveOpen && topics[TOPIC_TASKS] !== "open" && (turn.coverage_update || currentTopic === TOPIC_REVIEW)) {
     const extended = extendAgendaWithTasks(agenda, topics, [selected.name]);
     if (extended) {
       agenda = extended.agenda;
@@ -242,7 +252,7 @@ export function applyTurn(state: InterviewState, turn: AgentTurn): InterviewStat
   const next: InterviewState = {
     ...state,
     agenda,
-    coverage: { topics, followUps: state.coverage.followUps, vetoCount: state.coverage.vetoCount ?? 0 },
+    coverage: { ...state.coverage, topics, followUps: state.coverage.followUps, vetoCount: state.coverage.vetoCount ?? 0 },
     transcript: [
       ...state.transcript,
       {
@@ -303,6 +313,59 @@ export async function agentTurn(state: InterviewState): Promise<{ turn: AgentTur
   ];
   let turn = await chat(messages, { schema: agentTurnSchema, temperature: 0.4 });
   let working = state;
+  const proposedDive = turn.dive_task;
+
+  const currentTopic = state.agenda[currentTopicIndex(state)];
+  const lastUser = state.transcript.at(-1);
+  const hasUserAnswer = lastUser?.role === "user";
+  const userMessages = state.transcript.filter((item) => item.role === "user");
+  if (turn.candidates) {
+    const names = new Set([...state.facts, ...(hasUserAnswer ? turn.extracted_facts : [])].filter((f) => f.type === "task").map((f) => normalizeText(f.name)));
+    turn.candidates = turn.candidates.filter((candidate) => names.has(normalizeText(candidate.task))).map((candidate) => ({
+      ...candidate,
+      evidence: candidate.evidence.filter((item) => {
+        const match = /^msg#([1-9]\d*)$/.exec(item.source);
+        return Boolean(match && Number(match[1]) <= userMessages.length);
+      }),
+    }));
+    working = { ...working, coverage: { ...working.coverage, candidates: turn.candidates } };
+    if (turn.dive_task && !turn.candidates.some((candidate) => normalizeText(candidate.task) === normalizeText(turn.dive_task!))) turn.dive_task = undefined;
+  }
+
+  if (hasUserAnswer && currentTopic?.startsWith(DEEP_DIVE_PREFIX)) {
+    const previous = state.coverage.dives?.[currentTopic] ?? {};
+    const updates = Object.fromEntries((turn.dive_updates ?? []).map(({ field, status }) => [field, status]));
+    const dive = { ...previous, ...updates };
+    working = { ...working, coverage: { ...working.coverage, dives: { ...working.coverage.dives, [currentTopic]: dive } } };
+    const closing = turn.coverage_update?.topic === currentTopic && turn.coverage_update.status === "covered";
+    if (closing && !dive.actions && turn.answer_kind !== "decline") {
+      turn = { ...turn, coverage_update: undefined, next_action: "follow_up", dive_task: undefined,
+        message: "Давайте разберём конкретный случай.\n\nЧто вы сделали сначала?" };
+    }
+  }
+
+  if (hasUserAnswer && turn.answer_kind) {
+    const words = lastUser.text.trim().split(/\s+/).filter(Boolean).length;
+    const shortAnswers = turn.answer_kind === "short_substantive" && words <= 10 ? (working.coverage.shortAnswers ?? 0) + 1 : 0;
+    const promptForDetail = shortAnswers >= 4 && !working.coverage.detailPrompted && !turn.coverage_update && !turn.dive_task && turn.next_action !== "summarize";
+    working = { ...working, coverage: { ...working.coverage, shortAnswers, detailPrompted: working.coverage.detailPrompted || promptForDetail } };
+    if (promptForDetail) turn = { ...turn, message: "Чтобы чекап получился полезнее, расскажите, пожалуйста, чуть подробнее об одной задаче.\n\nЧто вы сделали в последний раз?" };
+  }
+
+  if (proposedDive) {
+    const availableTasks = [...state.facts, ...(hasUserAnswer ? turn.extracted_facts : [])];
+    const selected = turn.dive_task && availableTasks.some((fact) => fact.type === "task" && normalizeText(fact.name) === normalizeText(turn.dive_task!));
+    const alreadyAdded = state.agenda.some((topic) => normalizeText(topic) === normalizeText(`${DEEP_DIVE_PREFIX}${proposedDive}`));
+    const currentStillOpen = currentTopic?.startsWith(DEEP_DIVE_PREFIX) && !(turn.coverage_update?.topic === currentTopic && turn.coverage_update.status !== "open");
+    const eligible = selected && !alreadyAdded && !currentStillOpen && state.agenda.filter((topic) => topic.startsWith(DEEP_DIVE_PREFIX)).length < MAX_DIVES
+      && (state.coverage.topics[TOPIC_TASKS] !== "open" || (turn.coverage_update?.topic === TOPIC_TASKS && turn.coverage_update.status !== "open"))
+      && (turn.coverage_update || currentTopic === TOPIC_REVIEW);
+    if (!eligible) {
+      const projected = applyCoverageUpdate(working, turn.coverage_update);
+      const nextTopic = projected.agenda[currentTopicIndex(projected)];
+      turn = { ...turn, dive_task: undefined, next_action: "ask", message: nextTopic ? mainQuestionForTopic(nextTopic) : mainQuestionForTopic(TOPIC_REVIEW) };
+    }
+  }
 
   // При повторе сначала просим конкретный пример, затем пропускаем тему.
   const lastAssistant = [...state.transcript].reverse().find((m) => m.role === "assistant");
@@ -371,7 +434,7 @@ export async function agentTurn(state: InterviewState): Promise<{ turn: AgentTur
   if (previousTopic !== TOPIC_REVIEW && nextTopic === TOPIC_REVIEW) {
     const tasks = [...new Set(next.facts.filter((f) => f.type === "task").map((f) => f.name))];
     const message = tasks.length
-      ? `Мы обсудили такие задачи: ${tasks.join(", ")}. Есть ли ещё повторяющаяся работа, которую мы не упомянули?`
+      ? `Мы обсудили такие задачи: ${tasks.join(", ")}.\n\nЕсть ли ещё повторяющаяся работа, которую мы не упомянули?`
       : mainQuestionForTopic(TOPIC_REVIEW);
     turn = { ...turn, message, next_action: "ask" };
     next.transcript[next.transcript.length - 1].text = message;
@@ -471,6 +534,7 @@ export async function applySummaryCorrection(
   const next: InterviewState = {
     ...state,
     summary,
+    facts: factsFromConfirmedSummary(summary),
     transcript: [
       ...state.transcript,
       { role: "assistant", text: message, ts: new Date().toISOString(), topic: TOPIC_SUMMARY },
@@ -485,5 +549,18 @@ export async function applySummaryCorrection(
     },
     state: next,
   };
+}
+
+/** Резюме — источник истины после исправления: старые отозванные факты не возвращаются. */
+export function factsFromConfirmedSummary(summary: InterviewSummary): Fact[] {
+  const facts: Fact[] = [];
+  for (const process of summary.processes) {
+    const source = `резюме: ${process.name}`;
+    facts.push({ type: "task", name: process.name, source, frequency: process.frequency, volume: process.volume || undefined, duration: process.duration });
+    for (const step of process.steps) facts.push({ type: "step", name: step, source });
+    for (const actor of process.actors) facts.push({ type: "actor", name: actor, source });
+    for (const system of process.systems) facts.push({ type: "system", name: system, source });
+  }
+  return facts;
 }
 

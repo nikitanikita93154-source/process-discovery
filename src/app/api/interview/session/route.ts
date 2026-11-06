@@ -11,12 +11,12 @@ export async function GET() {
     const user = await requireApiUser();
 
     const row = await db.interviewSession.findFirst({
-      where: { userId: user.id, status: { in: [...ACTIVE_SESSION_STATUSES] } },
+      where: { userId: user.id, OR: [{ status: { in: [...ACTIVE_SESSION_STATUSES] } }, { status: SESSION_STATUS.COMPLETED, projectId: null }] },
       orderBy: { startedAt: "desc" },
     });
 
     const completed = await db.interviewSession.findFirst({
-      where: { userId: user.id, status: SESSION_STATUS.COMPLETED },
+      where: { userId: user.id, status: SESSION_STATUS.COMPLETED, projectId: { not: null } },
       orderBy: { startedAt: "desc" },
     });
 
@@ -25,6 +25,7 @@ export async function GET() {
     }
 
     const state = loadInterviewState(row, user.name ?? "Сотрудник");
+    if (state.status === SESSION_STATUS.COMPLETED && !row.projectId && state.summary) state.status = SESSION_STATUS.AWAITING_CONFIRMATION;
     return NextResponse.json({
       hasCompleted: Boolean(completed),
       session: {

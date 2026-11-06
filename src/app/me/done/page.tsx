@@ -8,7 +8,7 @@ export default async function DonePage() {
   const session = await auth();
   if (!session?.user?.id) redirect("/login");
   if (session.user.role === "OWNER") redirect("/dashboard");
-  const completed = await db.interviewSession.findFirst({ where: { userId: session.user.id, status: "completed" }, select: { id: true } });
+  const completed = await db.interviewSession.findFirst({ where: { userId: session.user.id, status: "completed", projectId: { not: null } }, select: { id: true } });
   if (!completed) redirect("/me/interview");
   return <div className="mx-auto max-w-xl space-y-6 py-12 text-center">
     <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-full bg-lime"><Check className="h-9 w-9" aria-hidden="true" /></div>

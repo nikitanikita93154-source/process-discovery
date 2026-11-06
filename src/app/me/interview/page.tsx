@@ -13,11 +13,11 @@ export default async function InterviewPage() {
   if (!session?.user?.id) redirect("/login");
   if (session.user.role === "OWNER") redirect("/dashboard");
 
-  const completed = await db.interviewSession.findFirst({ where: { userId: session.user.id, status: SESSION_STATUS.COMPLETED }, select: { id: true } });
+  const completed = await db.interviewSession.findFirst({ where: { userId: session.user.id, status: SESSION_STATUS.COMPLETED, projectId: { not: null } }, select: { id: true } });
   if (completed) redirect("/me/done");
 
   const row = await db.interviewSession.findFirst({
-    where: { userId: session.user.id, status: { in: [...ACTIVE_SESSION_STATUSES] } },
+    where: { userId: session.user.id, OR: [{ status: { in: [...ACTIVE_SESSION_STATUSES] } }, { status: SESSION_STATUS.COMPLETED, projectId: null }] },
     orderBy: { startedAt: "desc" },
   });
 
@@ -27,7 +27,7 @@ export default async function InterviewPage() {
     const idx = currentTopicIndex(state);
     initial = {
       id: row.id,
-      status: state.status,
+      status: state.status === SESSION_STATUS.COMPLETED && !row.projectId && state.summary ? SESSION_STATUS.AWAITING_CONFIRMATION : state.status,
       agenda: state.agenda,
       coverage: state.coverage,
       transcript: state.transcript,

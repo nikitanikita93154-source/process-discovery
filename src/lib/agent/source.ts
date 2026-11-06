@@ -3,6 +3,7 @@ import { Prisma } from "@prisma/client";
 import { factsToParsedSource } from "@/lib/schemas/source";
 import { SESSION_STATUS, type InterviewSummary } from "@/lib/schemas/interview";
 import type { InterviewState } from "@/lib/agent/interview";
+import { factsFromConfirmedSummary } from "@/lib/agent/interview";
 import { routeInterview } from "@/lib/agent/routing";
 import { FOLLOW_UP_PREFIX } from "@/lib/agent/agenda";
 
@@ -38,25 +39,18 @@ export async function completeInterview(
     return { projectId: current.projectId };
   }
 
-  // Атомарная блокировка от параллельного запуска (двойной клик / ретрай):
-  // count=1 получает ровно один вызов, остальные идут дальше как ретраи —
-  // дубликат Source отсекается проверкой projectId внутри транзакции
-  await db.interviewSession.updateMany({
-    where: { id: state.sessionId, status: { not: SESSION_STATUS.COMPLETED } },
-    data: { status: SESSION_STATUS.COMPLETED, endedAt: new Date() },
-  });
-
   const employee = await db.user.findUnique({ where: { id: state.userId } });
   const orgId = employee?.orgId;
   if (!orgId) throw new Error("Пользователь не найден");
 
   const summary: InterviewSummary = state.summary ?? { processes: [], open_questions: [] };
+  const confirmedFacts = factsFromConfirmedSummary(summary);
   const route = await routeInterview(orgId, state.userId, state.employeeName, summary);
   const project = await db.project.findFirst({ where: { id: route.projectId, orgId } });
   if (!project) throw new Error("Проект маршрутизации не найден");
 
   const parsed = factsToParsedSource({
-    facts: state.facts,
+    facts: confirmedFacts,
     summary,
     citationRef: `Интервью: ${state.employeeName}`,
   });
@@ -80,7 +74,7 @@ export async function completeInterview(
             sessionId: state.sessionId,
             employeeName: state.employeeName,
             summary: state.summary,
-            facts: state.facts,
+            facts: confirmedFacts,
             processLinks: route.processLinks,
           },
         },

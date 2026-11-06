@@ -1,13 +1,13 @@
 "use client";
 
 import { ArrowUp, Check } from "lucide-react";
-import { Eyebrow, PageTitle } from "@/components/ui/brand";
+import { PageTitle } from "@/components/ui/brand";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ru } from "@/lib/content/ru";
 import type { AgentTurn, InterviewSummary, TranscriptItem } from "@/lib/schemas/interview";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { cn } from "@/lib/utils";
 import { InterviewGuide } from "@/components/interview-guide";
@@ -45,6 +45,7 @@ async function postStream(payload: Record<string, unknown>, handlers: StreamEven
   const reader = res.body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
+  let finished = false;
   for (;;) {
     const { done, value } = await reader.read();
     if (done) break;
@@ -74,6 +75,9 @@ async function postStream(payload: Record<string, unknown>, handlers: StreamEven
           case "error":
             handlers.onError((parsed as { message: string }).message);
             break;
+          case "done":
+            finished = true;
+            break;
           default:
             // done и неизвестные события — завершение кадра, действий не требуется
             break;
@@ -83,6 +87,7 @@ async function postStream(payload: Record<string, unknown>, handlers: StreamEven
       }
     }
   }
+  if (!finished) throw new Error("Поток ответа прерван");
 }
 
 export function InterviewChat({ initialSession }: { initialSession: InterviewSessionState | null }) {
@@ -95,7 +100,7 @@ export function InterviewChat({ initialSession }: { initialSession: InterviewSes
   const [summary, setSummary] = useState<InterviewSummary | null>(initialSession?.summary ?? null);
   const [confirming, setConfirming] = useState(false);
   const [showGuide, setShowGuide] = useState(() => !initialSession || (initialSession.transcript.length === 0 && !initialSession.summary));
-  const bottomRef = useRef<HTMLDivElement>(null);
+  const messagesRef = useRef<HTMLDivElement>(null);
   const taRef = useRef<HTMLTextAreaElement>(null);
   // Первый ход агента нужен, если транскрипт пуст или заканчивается
   // неотвеченным сообщением сотрудника (ход, прерванный сбоем)
@@ -104,7 +109,8 @@ export function InterviewChat({ initialSession }: { initialSession: InterviewSes
   const startedRef = useRef(initialTranscript.length > 0 && !hasPendingUser);
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    const container = messagesRef.current;
+    container?.scrollTo({ top: container.scrollHeight, behavior: "smooth" });
   }, [messages, summary]);
 
   const resizeTextarea = useCallback(() => {
@@ -118,6 +124,7 @@ export function InterviewChat({ initialSession }: { initialSession: InterviewSes
     async (payload: Record<string, unknown>) => {
       setBusy(true);
       setError(null);
+      try {
       await postStream(
         { ...(session ? { sessionId: session.id } : {}), ...payload },
         {
@@ -146,10 +153,18 @@ export function InterviewChat({ initialSession }: { initialSession: InterviewSes
             setMessages((prev) => [...prev, { role: "assistant", text: turn.message, ts: new Date().toISOString() }]);
           },
           onSummary: (s) => setSummary(s),
-          onError: (message) => setError(message),
+          onError: (message) => {
+            setError(message);
+            if (typeof payload.message === "string") setInput(payload.message);
+          },
         },
       );
-      setBusy(false);
+      } catch {
+        setError(ru.errors.network);
+        if (typeof payload.message === "string") setInput(payload.message);
+      } finally {
+        setBusy(false);
+      }
     },
     [session],
   );
@@ -181,6 +196,7 @@ export function InterviewChat({ initialSession }: { initialSession: InterviewSes
     if (!session || busy || confirming) return;
     setConfirming(true);
     setError(null);
+    try {
     const res = await fetch("/api/interview/confirm", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -194,6 +210,10 @@ export function InterviewChat({ initialSession }: { initialSession: InterviewSes
       setError(err?.error ?? ru.errors.generic);
       setConfirming(false);
     }
+    } catch {
+      setError(ru.errors.network);
+      setConfirming(false);
+    }
   };
 
   const topicNumber = session?.topicNumber ?? 1;
@@ -202,11 +222,11 @@ export function InterviewChat({ initialSession }: { initialSession: InterviewSes
   const awaitingConfirmation = summary !== null;
 
   return (
-    <div className="mx-auto flex h-[calc(100dvh-13rem)] min-h-[540px] max-w-3xl flex-col gap-4 lg:h-[calc(100dvh-11rem)]">
+    <div className="mx-auto flex h-[calc(100dvh-10rem)] min-h-[320px] max-w-4xl flex-col gap-3">
       {showGuide && <InterviewGuide onFinish={() => setShowGuide(false)} />}
-      <div>
-        <div className="space-y-2"><Eyebrow>01 / СБОР ЗНАНИЙ</Eyebrow><PageTitle>{ru.interview.title}</PageTitle></div>
-        <p className="mt-2 text-sm text-muted">{ru.interview.subtitle}</p>
+      <div className="shrink-0">
+        <PageTitle className="text-xl sm:text-2xl">{ru.interview.title}</PageTitle>
+        <p className="mt-1 text-sm text-muted">{ru.interview.subtitle}</p>
       </div>
 
       {!awaitingConfirmation && (
@@ -222,8 +242,8 @@ export function InterviewChat({ initialSession }: { initialSession: InterviewSes
         </div>
       )}
 
-      <Card className="min-h-0 flex-1 overflow-hidden" data-interview-guide="dialog">
-        <CardContent className="thin-scroll h-full space-y-5 overflow-y-auto p-4 sm:p-6">
+      <Card className="flex min-h-0 flex-1 flex-col overflow-hidden">
+        <div ref={messagesRef} className="thin-scroll min-h-0 flex-1 space-y-5 overflow-y-auto p-4 sm:p-6" data-interview-guide="dialog">
           {messages.map((m, i) => (
             <div key={i} className={cn("flex", m.role === "user" ? "justify-end" : "justify-start")}>
               <div
@@ -234,7 +254,6 @@ export function InterviewChat({ initialSession }: { initialSession: InterviewSes
                     : "border border-line-soft bg-cream text-ink rounded-bl-sm",
                 )}
               >
-                {m.role === "assistant" && <span className="mb-2 block font-mono text-[10px] uppercase tracking-widest text-accent">Synapt · AI-интервьюер</span>}
                 {m.text}
               </div>
             </div>
@@ -257,13 +276,11 @@ export function InterviewChat({ initialSession }: { initialSession: InterviewSes
           {error && (
             <div className="rounded-[14px] bg-danger-soft p-3 text-sm text-danger">{error}</div>
           )}
-          <div ref={bottomRef} />
-        </CardContent>
-      </Card>
+        </div>
 
       <form
         data-interview-guide="answer"
-        className="flex flex-col gap-3 rounded-[22px] border border-line-warm bg-cream p-3 focus-within:ring-2 focus-within:ring-lime sm:flex-row sm:items-end"
+        className="flex shrink-0 flex-col gap-2 border-t border-line-warm bg-cream p-3 focus-within:ring-2 focus-within:ring-inset focus-within:ring-lime sm:flex-row sm:items-end"
         onSubmit={(e) => {
           e.preventDefault();
           void sendMessage(input);
@@ -272,7 +289,7 @@ export function InterviewChat({ initialSession }: { initialSession: InterviewSes
         <textarea
           aria-label="Ваш ответ интервьюеру"
           ref={taRef}
-          rows={3}
+          rows={2}
           value={input}
           placeholder={ru.interview.inputPlaceholder}
           disabled={busy}
@@ -286,7 +303,7 @@ export function InterviewChat({ initialSession }: { initialSession: InterviewSes
               void sendMessage(input);
             }
           }}
-          className="thin-scroll min-w-0 flex-1 resize-none rounded-[14px] bg-transparent px-3 py-2 text-sm outline-none placeholder:text-muted focus-visible:outline-none disabled:opacity-60"
+          className="thin-scroll max-h-[30dvh] min-w-0 flex-1 resize-none rounded-[14px] bg-transparent px-3 py-2 text-base outline-none placeholder:text-muted focus-visible:outline-none disabled:opacity-60 sm:text-sm"
         />
         <div className="flex items-center justify-between gap-2 sm:flex-col sm:items-stretch">
           <Button type="submit" variant="lime" disabled={busy || !input.trim()}>
@@ -307,6 +324,7 @@ export function InterviewChat({ initialSession }: { initialSession: InterviewSes
           )}
         </div>
       </form>
+      </Card>
     </div>
   );
 }

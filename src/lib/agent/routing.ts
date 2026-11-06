@@ -92,6 +92,7 @@ export async function matchProcesses(
   const links: ProcessLink[] = [];
   const evidenceUpdates: { candidateId: string; item: EvidenceItem }[] = [];
   for (const m of routing.matches) {
+    if (!summary.processes.some((process) => titlesSimilar(process.name, m.process))) continue;
     const link: ProcessLink = { process: m.process };
     if (m.projectId && projectIds.has(m.projectId)) link.projectId = m.projectId;
     if (m.candidateId && candidateIds.has(m.candidateId)) link.candidateId = m.candidateId;
@@ -115,7 +116,7 @@ export async function matchProcesses(
     matchReason: routing.matchReason,
     links,
     evidenceUpdates,
-    newCandidates: routing.newCandidates,
+    newCandidates: routing.newCandidates.filter((candidate) => summary.processes.some((process) => titlesSimilar(process.name, candidate.title))),
   };
 }
 
