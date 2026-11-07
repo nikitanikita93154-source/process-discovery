@@ -16,7 +16,6 @@ import {
   appendUserMessage,
   applySummaryCorrection,
   hasPendingUserMessage,
-  summarize,
   type InterviewState,
 } from "@/lib/agent/interview";
 
@@ -101,31 +100,10 @@ export async function POST(req: Request) {
           send("done", {});
         };
 
-        // Форсированное резюме (STOP / лимит времени): summarize → persist → эмуляция хода
-        const finishWithSummary = async (s: InterviewState) => {
-          const { turn, state: next } = await summarize(s);
-          await persist(next);
-          emitTurn(next, turn);
-          controller.close();
-        };
-
         try {
           sendSession(state0);
 
           let state = state0;
-
-          // --- Досрочное завершение (STOP) или временной лимит: резюме ---
-          if (
-            state.status === SESSION_STATUS.IN_PROGRESS &&
-            body.command === "STOP"
-          ) {
-            if (body.message) {
-              state = appendUserMessage(state, body.message);
-              await persist(state);
-            }
-            await finishWithSummary(state);
-            return;
-          }
 
           // --- Резюме ждёт подтверждения: правка замечанием или повторная отправка ---
           if (state.status === SESSION_STATUS.AWAITING_CONFIRMATION) {

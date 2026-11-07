@@ -107,10 +107,9 @@ export const interviewSummarySchema = z.object({
 export type InterviewSummary = z.infer<typeof interviewSummarySchema>;
 
 /** Запрос к POST /api/interview/stream (пустое тело = старт/продолжение сессии). */
-export const streamRequestSchema = z.object({
+export const streamRequestSchema = z.strictObject({
   sessionId: z.string().optional(),
   message: z.string().trim().min(1).max(2000).optional(),
-  command: z.enum(["STOP"]).optional(), // досрочное завершение → резюме
 });
 
 /** Запрос подтверждения резюме. */

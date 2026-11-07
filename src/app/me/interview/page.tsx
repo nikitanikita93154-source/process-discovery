@@ -2,7 +2,6 @@ import { redirect } from "next/navigation";
 import { db } from "@/lib/db";
 import { auth } from "@/lib/auth";
 import { InterviewChat, type InterviewSessionState } from "@/components/interview-chat";
-import { ru } from "@/lib/content/ru";
 import { loadInterviewState } from "@/lib/agent/session";
 import { currentTopicIndex } from "@/lib/agent/interview";
 import { TOPIC_SUMMARY } from "@/lib/agent/agenda";
@@ -40,11 +39,6 @@ export default async function InterviewPage() {
 
   return (
     <div className="py-2">
-      {initial && initial.transcript.length > 0 && (
-        <div className="mx-auto mb-3 max-w-3xl rounded-[14px] bg-ok-soft px-4 py-2 text-sm text-ok">
-          {ru.interview.sessionRestored}
-        </div>
-      )}
       <InterviewChat initialSession={initial} />
     </div>
   );

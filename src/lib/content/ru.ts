@@ -70,7 +70,6 @@ export const ru = {
     typing: "интервьюер печатает…",
     send: "Отправить",
     inputPlaceholder: "Ответьте максимально подробно — это поможет сделать опрос точнее",
-    finishEarly: "Завершить досрочно",
     summaryTitle: "Резюме интервью",
     noProcesses: "Процессов не найдено.",
     processSteps: "Шаги",
@@ -80,7 +79,6 @@ export const ru = {
     processPain: "Трудности",
     confirmHint: "Если что-то не так — напишите, что поправить, прямо в чат.",
     confirmButton: "Подтвердить и завершить",
-    sessionRestored: "Сессия восстановлена — продолжаем с того же места.",
   },
 
   map: {

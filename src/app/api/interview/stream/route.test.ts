@@ -8,6 +8,13 @@ import { POST } from "./route";
 
 beforeEach(() => vi.clearAllMocks());
 
+it("отклоняет команду досрочного завершения до изменения интервью", async () => {
+  const response = await POST(new Request("http://localhost/api/interview/stream", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ command: "STOP" }) }));
+  expect(response.status).toBe(422);
+  expect(db.interviewSession.findFirst).not.toHaveBeenCalled();
+  expect(db.interviewSession.create).not.toHaveBeenCalled();
+});
+
 it("не создаёт новое интервью после завершения, даже с прямым запросом", async () => {
   vi.mocked(db.interviewSession.findFirst).mockResolvedValue({ id: "completed" } as never);
   const response = await POST(new Request("http://localhost/api/interview/stream", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" }));

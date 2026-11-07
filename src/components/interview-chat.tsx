@@ -1,15 +1,13 @@
 "use client";
 
-import { ArrowUp, Check } from "lucide-react";
-import { PageTitle } from "@/components/ui/brand";
+import { Check } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ru } from "@/lib/content/ru";
 import type { AgentTurn, InterviewSummary, TranscriptItem } from "@/lib/schemas/interview";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
-import { Progress } from "@/components/ui/progress";
 import { cn } from "@/lib/utils";
+import { VoiceInput } from "@/components/voice-input";
 import { InterviewGuide } from "@/components/interview-guide";
 
 export interface InterviewSessionState {
@@ -96,6 +94,7 @@ export function InterviewChat({ initialSession }: { initialSession: InterviewSes
   const [messages, setMessages] = useState<TranscriptItem[]>(initialSession?.transcript ?? []);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
+  const [voiceBusy, setVoiceBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [summary, setSummary] = useState<InterviewSummary | null>(initialSession?.summary ?? null);
   const [confirming, setConfirming] = useState(false);
@@ -180,7 +179,8 @@ export function InterviewChat({ initialSession }: { initialSession: InterviewSes
 
   const sendMessage = async (text: string) => {
     const trimmed = text.trim();
-    if (!trimmed || busy) return;
+    if (!trimmed || busy || voiceBusy) return;
+    if (trimmed.length > 2000) { setError("Ответ длиннее 2000 символов. Сократите текст перед отправкой."); return; }
     setInput("");
     requestAnimationFrame(resizeTextarea);
     // Повторная отправка того же текста (ретрай после ошибки) не дублируется
@@ -193,7 +193,7 @@ export function InterviewChat({ initialSession }: { initialSession: InterviewSes
   };
 
   const confirmSummary = async () => {
-    if (!session || busy || confirming) return;
+    if (!session || busy || voiceBusy || confirming) return;
     setConfirming(true);
     setError(null);
     try {
@@ -224,26 +224,20 @@ export function InterviewChat({ initialSession }: { initialSession: InterviewSes
   return (
     <div className="mx-auto flex h-[calc(100dvh-10rem)] min-h-[320px] max-w-4xl flex-col gap-3">
       {showGuide && <InterviewGuide onFinish={() => setShowGuide(false)} />}
-      <div className="shrink-0">
-        <PageTitle className="text-xl sm:text-2xl">{ru.interview.title}</PageTitle>
-        <p className="mt-1 text-sm text-muted">{ru.interview.subtitle}</p>
+      <div className="flex shrink-0 flex-wrap items-start justify-between gap-x-4 gap-y-2" data-interview-guide="progress">
+        <div className="min-w-0 flex-1 basis-48">
+          <h1 className="flex items-center gap-2 text-base font-medium text-ink sm:text-lg">
+            <span aria-hidden="true" className="h-2 w-2 shrink-0 rounded-full bg-lime" />
+            Беседа о вашей работе
+          </h1>
+          {!awaitingConfirmation && currentTopic && <p className="mt-1 break-words pl-4 text-sm text-muted">{currentTopic}</p>}
+          {busy && <p role="status" className="mt-1 pl-4 text-xs text-muted">{ru.interview.typing}</p>}
+        </div>
+        {!awaitingConfirmation && <span className="pt-1 text-xs text-muted">{ru.interview.topicProgress} {topicNumber} {ru.interview.topicOf} {topicsTotal}</span>}
       </div>
 
-      {!awaitingConfirmation && (
-        <div className="space-y-1" data-interview-guide="progress">
-          <div className="flex flex-wrap items-center justify-between gap-1 text-xs text-muted">
-            <span className="font-mono text-[10px] uppercase tracking-wide text-muted">
-              {ru.interview.topicProgress} {topicNumber} {ru.interview.topicOf} {topicsTotal}
-              {currentTopic ? `: ${currentTopic}` : ""}
-            </span>
-            <span>{busy ? ru.interview.typing : ""}</span>
-          </div>
-          <Progress value={(topicNumber / Math.max(topicsTotal, 1)) * 100} />
-        </div>
-      )}
-
-      <Card className="flex min-h-0 flex-1 flex-col overflow-hidden">
-        <div ref={messagesRef} className="thin-scroll min-h-0 flex-1 space-y-5 overflow-y-auto p-4 sm:p-6" data-interview-guide="dialog">
+      <div className="flex min-h-0 flex-1 flex-col">
+        <div ref={messagesRef} className="thin-scroll min-h-0 flex-1 space-y-5 overflow-y-auto px-1 py-4 sm:px-4" data-interview-guide="dialog">
           {messages.map((m, i) => (
             <div key={i} className={cn("flex", m.role === "user" ? "justify-end" : "justify-start")}>
               <div
@@ -268,7 +262,7 @@ export function InterviewChat({ initialSession }: { initialSession: InterviewSes
             <SummaryCard
               summary={summary}
               confirming={confirming}
-              disabled={busy}
+              disabled={busy || voiceBusy}
               onConfirm={() => void confirmSummary()}
             />
           )}
@@ -280,7 +274,7 @@ export function InterviewChat({ initialSession }: { initialSession: InterviewSes
 
       <form
         data-interview-guide="answer"
-        className="flex shrink-0 flex-col gap-2 border-t border-line-warm bg-cream p-3 focus-within:ring-2 focus-within:ring-inset focus-within:ring-lime sm:flex-row sm:items-end"
+        className="relative mx-auto mb-2 flex w-full max-w-2xl shrink-0 items-end gap-2 rounded-[28px] border border-line-warm bg-cream p-2 shadow-sm focus-within:ring-2 focus-within:ring-lime"
         onSubmit={(e) => {
           e.preventDefault();
           void sendMessage(input);
@@ -289,7 +283,7 @@ export function InterviewChat({ initialSession }: { initialSession: InterviewSes
         <textarea
           aria-label="Ваш ответ интервьюеру"
           ref={taRef}
-          rows={2}
+          rows={1}
           value={input}
           placeholder={ru.interview.inputPlaceholder}
           disabled={busy}
@@ -303,28 +297,14 @@ export function InterviewChat({ initialSession }: { initialSession: InterviewSes
               void sendMessage(input);
             }
           }}
-          className="thin-scroll max-h-[30dvh] min-w-0 flex-1 resize-none rounded-[14px] bg-transparent px-3 py-2 text-base outline-none placeholder:text-muted focus-visible:outline-none disabled:opacity-60 sm:text-sm"
+          className="thin-scroll max-h-[30dvh] min-h-10 min-w-0 flex-1 resize-none bg-transparent px-4 py-2 text-base outline-none placeholder:text-muted disabled:opacity-60 sm:text-sm"
         />
-        <div className="flex items-center justify-between gap-2 sm:flex-col sm:items-stretch">
-          <Button type="submit" variant="lime" disabled={busy || !input.trim()}>
-            {ru.interview.send}<ArrowUp className="h-4 w-4" />
-          </Button>
-          {!awaitingConfirmation && (
-            <Button
-              data-interview-guide="finish"
-              type="button"
-              size="sm"
-              variant="ghost"
-              className="text-muted"
-              disabled={busy}
-              onClick={() => void runStream({ command: "STOP" })}
-            >
-              {ru.interview.finishEarly}
-            </Button>
-          )}
+        <div className="flex shrink-0 items-center">
+          <VoiceInput disabled={busy} hasText={Boolean(input.trim())} textTooLong={input.trim().length > 2000} onBusyChange={setVoiceBusy} onText={(text) => { setInput((previous) => previous.trim() ? `${previous.trimEnd()} ${text}` : text); requestAnimationFrame(resizeTextarea); }} />
+          {input.trim().length > 2000 && <span role="alert" className="absolute bottom-full left-4 mb-2 rounded-lg bg-danger-soft px-2 py-1 text-xs text-danger">Сократите ответ до 2000 символов.</span>}
         </div>
       </form>
-      </Card>
+      </div>
     </div>
   );
 }

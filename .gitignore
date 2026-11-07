@@ -48,3 +48,6 @@ uploads/*
 
 # пример окружения коммитим
 !.env.example
+
+# Local Whisper binaries and models
+/.local/
