@@ -21,9 +21,13 @@ import {
 
 export const maxDuration = 120;
 
-async function persist(state: InterviewState, status?: string) {
-  await db.interviewSession.update({
-    where: { id: state.sessionId },
+const INTERVIEW_GREETING = "Здравствуйте! Это чат для интервью о вашей работе. Я ИИ-агент: буду задавать вопросы, чтобы понять, как устроены ваши задачи, где возникают сложности и что можно улучшить. Пожалуйста, отвечайте подробно: описывайте шаги, приводите примеры и рассказывайте, что отнимает больше всего времени. Чем подробнее ответы, тем точнее мы сможем определить слабые места в рабочих процессах.";
+const globalLocks = globalThis as typeof globalThis & { interviewUserLocks?: Set<string> };
+const userLocks = globalLocks.interviewUserLocks ??= new Set<string>();
+
+async function persist(state: InterviewState, expectedTranscript: InterviewState["transcript"], status?: string) {
+  const result = await db.interviewSession.updateMany({
+    where: { id: state.sessionId, transcript: { equals: expectedTranscript } },
     data: {
       status: status ?? state.status,
       agenda: state.agenda,
@@ -33,12 +37,16 @@ async function persist(state: InterviewState, status?: string) {
       summary: state.summary ?? Prisma.DbNull,
     },
   });
+  if (result.count !== 1) throw new ApiError(409, "Состояние интервью изменилось. Повторите запрос.");
 }
 
 export async function POST(req: Request) {
   return handle(async () => {
     const user = await requireApiUser();
     const body = await parseBody(req, streamRequestSchema);
+    if (userLocks.has(user.id)) throw new ApiError(409, "Предыдущий ответ ещё обрабатывается. Попробуйте снова через несколько секунд.");
+    userLocks.add(user.id);
+    try {
 
     const completed = await db.interviewSession.findFirst({ where: { userId: user.id, status: SESSION_STATUS.COMPLETED, projectId: { not: null } }, select: { id: true } });
     if (completed) throw new ApiError(400, "Интервью уже завершено");
@@ -104,6 +112,7 @@ export async function POST(req: Request) {
           sendSession(state0);
 
           let state = state0;
+          let persistedTranscript = state0.transcript;
 
           // --- Резюме ждёт подтверждения: правка замечанием или повторная отправка ---
           if (state.status === SESSION_STATUS.AWAITING_CONFIRMATION) {
@@ -111,12 +120,14 @@ export async function POST(req: Request) {
               // Замечание попадает в транскрипт ровно один раз и сохраняется до вызова LLM
               if (body.message) {
                 state = appendUserMessage(state, body.message);
-                await persist(state);
+                await persist(state, persistedTranscript);
+                persistedTranscript = state.transcript;
               }
               const correction = state.transcript.at(-1)!.text;
               const { turn, state: s } = await applySummaryCorrection(state, correction);
               state = s;
-              await persist(state);
+              await persist(state, persistedTranscript);
+              persistedTranscript = state.transcript;
               emitTurn(state, turn);
             } else {
               send("summary", state.summary);
@@ -131,7 +142,8 @@ export async function POST(req: Request) {
             // Сообщение сотрудника пишем в транскрипт ровно один раз
             // и сохраняем до вызова LLM (устойчивость к сбоям; ретрай не дублирует)
             state = appendUserMessage(state, body.message);
-            await persist(state);
+            await persist(state, persistedTranscript);
+            persistedTranscript = state.transcript;
           } else if (state.transcript.length > 0 && !hasPendingUserMessage(state)) {
             // Пустое сообщение при живой сессии без неотвеченного хода — нечего делать
             send("done", {});
@@ -142,14 +154,18 @@ export async function POST(req: Request) {
           // при «висящем» неотвеченном сообщении → восстановление прерванного хода
 
           const { turn, state: next } = await agentTurn(state);
+          if (state.transcript.length === 0) {
+            turn.message = `${INTERVIEW_GREETING}\n\n${turn.message}`;
+            next.transcript[next.transcript.length - 1].text = turn.message;
+          }
           state = next;
-          await persist(state); // после каждого хода — в БД
+          await persist(state, persistedTranscript); // сохраняем, только если сессию не изменил другой запрос
 
           emitTurn(state, turn);
           controller.close();
         } catch (e) {
           // Fallback: сбой LLM/JSON → вежливое сообщение + сохранение сессии
-          console.error("[interview/stream]", e);
+          console.error("[interview/stream]", e instanceof LLMError ? "Ошибка провайдера или схемы" : "Ошибка обработки хода");
           const message =
             e instanceof LLMError
               ? "Возникла техническая заминка. Проверьте последний ответ и попробуйте отправить его ещё раз."
@@ -157,6 +173,8 @@ export async function POST(req: Request) {
           send("error", { message });
           send("done", { error: true });
           controller.close();
+        } finally {
+          userLocks.delete(user.id);
         }
       },
     });
@@ -168,5 +186,9 @@ export async function POST(req: Request) {
         Connection: "keep-alive",
       },
     });
+    } catch (error) {
+      userLocks.delete(user.id);
+      throw error;
+    }
   });
 }

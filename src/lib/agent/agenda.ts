@@ -30,8 +30,7 @@ export interface TopicDef {
 export const CORE_TOPICS: TopicDef[] = [
   {
     title: TOPIC_ROLE,
-    // должность и отдел спрашиваем явно — иначе department в резюме пустует
-    mainQuestion: "Кем вы работаете?\n\nЕсли удобно, укажите должность, отдел и основные обязанности.",
+    mainQuestion: "Кем вы работаете и какие у вас основные обязанности?",
   },
   { title: TOPIC_TASKS, mainQuestion: "Какие задачи вы регулярно выполняете за день, неделю или месяц, включая небольшую рутину?" },
   { title: TOPIC_HANDOFFS, mainQuestion: "Чего или кого вы чаще всего ждёте в работе и что делаете в это время?" },

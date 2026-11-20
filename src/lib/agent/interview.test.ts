@@ -89,6 +89,23 @@ describe("hasPendingUserMessage", () => {
 });
 
 describe("applyTurn", () => {
+  it("отзывает только указанный факт и пропускает его открытый разбор", () => {
+    const topic = deepDiveTopic("Просмотр рилсов");
+    const state = makeState({ facts: [{ type: "task", name: "Просмотр рилсов", source: "msg#1" }, { type: "task", name: "Контент", source: "msg#1" }], transcript: [userMsg("нет, просто отдыхаю")] });
+    state.agenda.unshift(topic); state.coverage.topics[topic] = "open";
+    state.coverage.candidates = [{ task: "Просмотр рилсов", evidence: [] }];
+    const result = applyTurn(state, turn({ fact_updates: [{ target_name: "Просмотр рилсов", target_source: "msg#1", action: "revoke" }] }));
+    expect(result.facts.map((f) => f.name)).toEqual(["Контент"]);
+    expect(result.coverage.topics[topic]).toBe("skipped");
+    expect(result.coverage.candidates).toEqual([]);
+  });
+
+  it("сохраняет пожелание у задачи и не применяет ссылку на неизвестный факт", () => {
+    const state = makeState({ facts: [{ type: "task", name: "Перенос в CRM", source: "msg#1" }], transcript: [userMsg("хочу автоподстановку сроков")] });
+    const result = applyTurn(state, turn({ fact_updates: [{ target_name: "Перенос в CRM", target_source: "msg#1", action: "improve", correction: "Автоподстановка сроков" }, { target_name: "Другая", target_source: "msg#1", action: "revoke" }] }));
+    expect(result.facts).toHaveLength(1);
+    expect(result.facts[0].improvements).toEqual(["Автоподстановка сроков"]);
+  });
   it("игнорирует извлечённые факты, если последнее сообщение не от сотрудника (приветствие)", () => {
     const next = applyTurn(
       makeState(),

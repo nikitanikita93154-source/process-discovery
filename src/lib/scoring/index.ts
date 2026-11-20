@@ -38,13 +38,13 @@ const norm = (s: string) => s.toLowerCase().replace(/[^a-zа-яё0-9]/gi, "");
 /** Частота/объём/система/длительность из фактов интервью (шаги источника). */
 export interface InterviewFactsIndex {
   /** norm(имя шага) → { frequency, volume, system, duration } из parsed источников */
-  entries: Map<string, { frequency?: string; volume?: string; system?: string; duration?: string }>;
+  entries: Map<string, { frequency?: string; volume?: string; system?: string; duration?: string; total_time?: string; improvements?: string[] }>;
   hasTemplateTexts: boolean;
   hasGutDecisions: boolean;
 }
 
 export function buildInterviewIndex(sources: ParsedSource[]): InterviewFactsIndex {
-  const entries = new Map<string, { frequency?: string; volume?: string; system?: string; duration?: string }>();
+  const entries: InterviewFactsIndex["entries"] = new Map();
   const gutDecisionTexts: string[] = [];
   for (const s of sources) {
     for (const step of s.candidateSteps) {
@@ -55,6 +55,8 @@ export function buildInterviewIndex(sources: ParsedSource[]): InterviewFactsInde
         volume: step.volume ?? existing.volume,
         system: step.system ?? existing.system,
         duration: step.duration ?? existing.duration,
+        total_time: step.total_time ?? existing.total_time,
+        improvements: step.improvements ?? existing.improvements,
       });
     }
     gutDecisionTexts.push(...(s.gutDecisions ?? []));

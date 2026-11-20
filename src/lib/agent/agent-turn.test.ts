@@ -3,8 +3,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("@/lib/llm", () => ({ chat: vi.fn() }));
 
 import { chat } from "@/lib/llm";
+import { loadInterviewState } from "./session";
 import { agentTurn, appendUserMessage, factsFromConfirmedSummary, type InterviewState } from "@/lib/agent/interview";
-import { TOPIC_GUT, TOPIC_HANDOFFS, TOPIC_SUMMARY, TOPIC_TASKS, buildAgenda, deepDiveTopic, mainQuestionForTopic } from "@/lib/agent/agenda";
+import { TOPIC_GUT, TOPIC_HANDOFFS, TOPIC_ROLE, TOPIC_SUMMARY, TOPIC_TASKS, buildAgenda, deepDiveTopic, mainQuestionForTopic } from "@/lib/agent/agenda";
 import { SESSION_STATUS, type AgentTurn, type TranscriptItem } from "@/lib/schemas/interview";
 
 const mockChat = vi.mocked(chat);
@@ -73,6 +74,181 @@ beforeEach(() => {
 });
 
 describe("глубина интервью", () => {
+  it("засчитывает ответ о начале задачи, даже если модель пропустила dive_updates", async () => {
+    const s = stateWithOneOpenTopic();
+    const topic = deepDiveTopic("Поиск трендов");
+    s.agenda.unshift(topic);
+    s.coverage.topics[topic] = "open";
+    s.coverage.dives = { [topic]: { actions: "known", result: "known" } };
+    s.coverage.questions = [{ topic, detail: "Поиск трендов/input", status: "asked" }];
+    mockChat.mockResolvedValueOnce({ message: "Чего обычно ждёте?", next_action: "ask", previous_answer: "answered",
+      extracted_facts: [], coverage_update: { topic, status: "covered" } } as never);
+    const result = await agentTurn(s);
+    expect(result.state.coverage.dives?.[topic]?.input).toBe("known");
+    expect(result.turn.message).not.toContain("начинается");
+  });
+
+  it("восстанавливает действия и результат по словам сотрудника, если модель опустила процесс в резюме", async () => {
+    const s = stateWithOneOpenTopic();
+    s.transcript[0].text = "Записываю примеры в таблицу. Готово, когда редактор принял подборку.";
+    s.facts = [{ type: "task", name: "Подборка", source: "msg#1" }];
+    s.coverage.observations = [
+      { task: "Подборка", field: "actions", status: "known", quote: "Записываю примеры в таблицу", source: "msg#1" },
+      { task: "Подборка", field: "result", status: "known", quote: "Готово, когда редактор принял подборку", source: "msg#1" },
+    ];
+    mockChat.mockResolvedValueOnce({ processes: [], open_questions: [] } as never);
+    const result = await agentTurn(appendUserMessage(s, "Хочу закончить"));
+    expect(result.state.summary?.processes[0]?.steps).toEqual(s.coverage.observations.map(o => o.quote));
+    expect(result.state.summary?.open_questions.length).toBeGreaterThan(0);
+  });
+
+  it("уточняет связь отдельно от фактов и после перезагрузки принимает неизвестное значение", async () => {
+    const s = stateWithTwoOpenTopics("Что делаете во время ожидания?");
+    const hypothesis = { type: "step", name: "Исправляю ошибки во время ожидания", source: "msg#1" };
+    const question = "Когда именно приходится исправлять ошибки?";
+    mockChat.mockResolvedValueOnce({ message: "Перейдём дальше?", next_action: "ask",
+      coverage_update: { topic: TOPIC_HANDOFFS, status: "covered" }, extracted_facts: [hypothesis],
+      clarification: { kind: "relation", subject: "Исправление ошибок", detail: "время исправления", question, hypothesis },
+    } as never);
+    const first = await agentTurn(s);
+    expect(first.turn.message).toBe(question);
+    expect(first.state.facts).toEqual([]);
+    expect(first.state.coverage.topics[TOPIC_HANDOFFS]).toBe("open");
+    const restored = loadInterviewState({ ...first.state, id: s.sessionId }, s.employeeName);
+    mockChat.mockResolvedValueOnce({ message: "Чего обычно ждёте?", next_action: "ask", extracted_facts: [hypothesis] } as never);
+    const next = await agentTurn(appendUserMessage(restored, "Не знаю"));
+    expect(next.state.coverage.clarifications?.[0]).toMatchObject({ status: "unknown", source: "msg#1", responseSource: "msg#2" });
+    expect(next.state.facts).toEqual([]);
+  });
+
+  it("уточняет ошибку в текущей теме до перехода по повестке", async () => {
+    const s = stateWithTwoOpenTopics("Что обычно занимает время?");
+    s.transcript[1].text = "При ручном переносе в CRM часто ошибаюсь с датой.";
+    mockChat.mockResolvedValueOnce({ message: "Следующая тема?", next_action: "ask", extracted_facts: [],
+      coverage_update: { topic: TOPIC_HANDOFFS, status: "covered" } } as never);
+    const next = await agentTurn(s);
+    expect(next.turn.message).toContain("обнаружили ошибку");
+    expect(next.state.coverage.topics[TOPIC_HANDOFFS]).toBe("open");
+  });
+
+  it("сохраняет расхождение один раз и включает неизвестное в резюме", async () => {
+    const s = stateWithOneOpenTopic();
+    const task = { type: "task", name: "Акты", volume: "20 актов в день", duration: "5 минут", total_time: "около часа в день", source: "msg#1" };
+    mockChat.mockResolvedValueOnce({ message: "Дальше?", next_action: "ask", extracted_facts: [task] } as never);
+    const first = await agentTurn(s);
+    expect(first.turn.message).toContain("части объёма");
+    mockChat.mockResolvedValueOnce({ message: "Что ещё?", next_action: "ask", extracted_facts: [] } as never);
+    const second = await agentTurn(appendUserMessage(first.state, "Не помню"));
+    expect(second.turn.message).toBe("Что ещё?");
+    mockChat.mockResolvedValueOnce({ processes: [], open_questions: [] } as never);
+    const end = await agentTurn(appendUserMessage(second.state, "Хочу закончить"));
+    expect(end.state.summary?.open_questions.join(" ")).toContain(task.total_time);
+    expect(end.state.summary?.processes[0]?.total_time).toBe(task.total_time);
+  });
+
+  it("учитывает прежний ответ при перефразировке и не спрашивает о прибыли", async () => {
+    const s = stateWithTwoOpenTopics("Сколько обычно ждёте?");
+    s.coverage.questions = [{ topic: TOPIC_HANDOFFS, detail: "длительность ожидания", status: "asked" }];
+    mockChat.mockResolvedValueOnce({ message: "Как долго длится ожидание?", next_action: "ask", extracted_facts: [],
+      question_detail: "длительность ожидания", previous_answer: "unknown" } as never);
+    const first = await agentTurn(s);
+    expect(first.turn.message).not.toContain("длится ожидание");
+    mockChat.mockResolvedValueOnce({ message: "Что приносит меньше всего денег, но отнимает больше всего времени?", next_action: "ask", extracted_facts: [] } as never);
+    const next = await agentTurn(appendUserMessage(first.state, "Не знаю"));
+    expect(next.turn.message).toBe("Какая из ваших задач отнимает больше всего времени?");
+  });
+
+  it("по прямой просьбе завершает интервью и отмечает непройденные темы", async () => {
+    const state = stateWithTwoOpenTopics("Что делаете?");
+    state.transcript[state.transcript.length - 1].text = "хочу закончить сейчас";
+    mockChat.mockResolvedValueOnce(structuredClone(summaryPayload) as never);
+    const result = await agentTurn(state);
+    expect(result.state.status).toBe(SESSION_STATUS.AWAITING_CONFIRMATION);
+    expect(result.state.coverage.topics[TOPIC_HANDOFFS]).toBe("skipped");
+    expect(result.state.coverage.topics[TOPIC_GUT]).toBe("skipped");
+    expect(mockChat).toHaveBeenCalledTimes(1);
+  });
+
+  it("не теряет задачи, если модель вернула пустое резюме", async () => {
+    const state = stateWithOneOpenTopic();
+    state.transcript[state.transcript.length - 1].text = "хочу закончить сейчас";
+    state.facts.push({ type: "task", name: "Обработка документов", source: "msg#1", volume: "20 документов", duration: "5 минут на документ", total_time: "час в день" });
+    mockChat.mockResolvedValueOnce({ processes: [], open_questions: [] } as never);
+    const result = await agentTurn(state);
+    expect(result.state.summary?.processes[0]).toMatchObject({ name: "Обработка документов", volume: "20 документов", duration: "5 минут на документ", total_time: "час в день" });
+  });
+
+  it("не добавляет рассчитанное время и неподтверждённое пожелание в резюме", async () => {
+    const state = stateWithOneOpenTopic();
+    state.transcript[state.transcript.length - 1].text = "хочу закончить сейчас";
+    state.facts.push({ type: "task", name: "Заявки", source: "msg#1", volume: "8 заявок", duration: "15 минут" });
+    mockChat.mockResolvedValueOnce({ processes: [{ name: "Заявки", steps: [], actors: [], systems: [], volume: "8 заявок", duration: "15 минут", total_time: "2 часа", improvements: ["Автоматизировать"], pain: "" }], open_questions: [] } as never);
+    const result = await agentTurn(state);
+    expect(result.state.summary?.processes[0].total_time).toBeUndefined();
+    expect(result.state.summary?.processes[0].improvements).toEqual([]);
+  });
+
+  it("ставит интервью на паузу без изменения тем", async () => {
+    const state = stateWithOneOpenTopic();
+    mockChat.mockResolvedValueOnce({ message: "Вопрос", extracted_facts: [], next_action: "ask", user_intent: "pause" } as never);
+    const result = await agentTurn(state);
+    expect(result.turn.message).toContain("паузу");
+    expect(result.state.status).toBe(SESSION_STATUS.IN_PROGRESS);
+    expect(result.state.coverage.topics).toEqual(state.coverage.topics);
+  });
+
+  it("по просьбе пропускает только текущую тему", async () => {
+    const state = stateWithTwoOpenTopics("Что делаете?");
+    mockChat.mockResolvedValueOnce({ message: "Дальше", extracted_facts: [], next_action: "ask", user_intent: "skip_topic" } as never);
+    const result = await agentTurn(state);
+    expect(result.state.coverage.topics[TOPIC_HANDOFFS]).toBe("skipped");
+    expect(result.state.coverage.topics[TOPIC_GUT]).toBe("open");
+    expect(result.state.status).toBe(SESSION_STATUS.IN_PROGRESS);
+  });
+
+  it("сохраняет уточнение для уже открытого разбора", async () => {
+    const state = stateWithOneOpenTopic();
+    const topic = deepDiveTopic("Отчёты");
+    state.agenda.unshift(topic);
+    state.coverage.topics[topic] = "open";
+    state.facts.push({ type: "task", name: "Отчёты", source: "msg#1" });
+    mockChat.mockResolvedValueOnce({ message: "Какие данные вы сверяете?", extracted_facts: [], next_action: "follow_up", dive_task: "Отчёты" } as never);
+    const result = await agentTurn(state);
+    expect(result.turn.message).toBe("Какие данные вы сверяете?");
+    expect(result.state.agenda.filter((item) => item === topic)).toHaveLength(1);
+  });
+
+  it("уточняет неоднозначное число без сохранения выдуманных фактов", async () => {
+    const state = stateWithOneOpenTopic("Что вы делаете в системе?");
+    state.transcript[state.transcript.length - 1].text = "20";
+    mockChat.mockResolvedValueOnce({ message: "20 заказов?", extracted_facts: [{ type: "task", name: "Заказы", volume: "20 заказов", source: "msg#1" }], next_action: "ask", numeric_meaning: "unclear" } as never);
+    const result = await agentTurn(state);
+    expect(result.turn.message).toContain("что означает число 20");
+    expect(result.state.facts).toEqual([]);
+  });
+
+  it("не собирает заново уже названные обязанности при смене темы", async () => {
+    const state = stateWithOneOpenTopic();
+    state.coverage.topics[TOPIC_ROLE] = "open";
+    state.coverage.topics[TOPIC_TASKS] = "open";
+    mockChat.mockResolvedValueOnce({ message: mainQuestionForTopic(TOPIC_TASKS), extracted_facts: [{ type: "task", name: "Обработка заявок", source: "msg#1" }], next_action: "ask", coverage_update: { topic: TOPIC_ROLE, status: "covered" } } as never);
+    const result = await agentTurn(state);
+    expect(result.turn.message).toContain("Обработка заявок");
+    expect(result.turn.message).toContain("ещё");
+    expect(result.turn.message).not.toBe(mainQuestionForTopic(TOPIC_TASKS));
+  });
+
+  it("не приписывает полученному ответу сбой доставки или опечатку", async () => {
+    const state = stateWithOneOpenTopic();
+    state.transcript[state.transcript.length - 1].text = "...";
+    mockChat.mockResolvedValueOnce({ message: "Похоже, ответ не дошёл. Повторите?", extracted_facts: [], next_action: "ask" } as never);
+    const first = await agentTurn(state);
+    expect(first.turn.message).toContain("Не совсем понял");
+    state.transcript[state.transcript.length - 1].text = "мою туалеты";
+    mockChat.mockResolvedValueOnce({ message: "Кажется, ответ с опечаткой", extracted_facts: [], next_action: "ask" } as never);
+    const second = await agentTurn(state);
+    expect(second.turn.message).toContain("обязанности");
+  });
   it("формирует факты для источника только из исправленного резюме", () => {
     const facts = factsFromConfirmedSummary({ processes: [{ name: "Отчёты", steps: ["Сверяет данные"], actors: [], systems: [], volume: "", pain: "", duration: "10 минут" }], open_questions: [] });
     expect(facts.map((fact) => fact.name)).toEqual(["Отчёты", "Сверяет данные"]);
@@ -106,19 +282,18 @@ describe("глубина интервью", () => {
     s.coverage.topics[TOPIC_TASKS] = "covered";
     for (const name of ["А", "Б", "В"]) { const t = deepDiveTopic(name); s.agenda.unshift(t); s.coverage.topics[t] = "covered"; }
     s.facts.push({ type: "task", name: "Г", source: "msg#1" });
-    mockChat.mockResolvedValueOnce({ message: "Разберём Г?", extracted_facts: [], next_action: "ask", dive_task: "Г", coverage_update: { topic: TOPIC_GUT, status: "covered" } } as never);
+    mockChat.mockResolvedValueOnce({ message: "Разберём Г?", extracted_facts: [], next_action: "ask", dive_task: "Г", coverage_update: { topic: TOPIC_GUT, status: "covered" } } as never).mockResolvedValueOnce(structuredClone(summaryPayload) as never);
     const result = await agentTurn(s);
     expect(result.state.agenda).not.toContain(deepDiveTopic("Г"));
     expect(result.turn.message).not.toContain("Разберём Г");
   });
 
-  it("после четырёх коротких содержательных ответов один раз просит подробнее", async () => {
+  it("сохраняет содержательный вопрос после четырёх коротких ответов", async () => {
     const s = stateWithOneOpenTopic();
     s.coverage.shortAnswers = 3;
     mockChat.mockResolvedValueOnce({ message: "Как часто?", extracted_facts: [], next_action: "follow_up", answer_kind: "short_substantive" } as never);
     const result = await agentTurn(s);
-    expect(result.turn.message).toContain("чуть подробнее");
-    expect(result.state.coverage.detailPrompted).toBe(true);
+    expect(result.turn.message).toBe("Как часто?");
     mockChat.mockResolvedValueOnce({ message: "Что дальше?", extracted_facts: [], next_action: "follow_up", answer_kind: "short_substantive" } as never);
     const next = await agentTurn(appendUserMessage(result.state, "готовлю отчёты"));
     expect(next.turn.message).toBe("Что дальше?");
@@ -140,7 +315,7 @@ describe("agentTurn: guard преждевременного summarize", () => {
   it("модель закрыла последнюю тему своим coverage_update — резюме сразу, без повторного вопроса", async () => {
     mockChat
       .mockResolvedValueOnce({ ...summarizeTurn, coverage_update: { topic: TOPIC_GUT, status: "covered" } } as never)
-      .mockResolvedValueOnce(summaryPayload as never);
+      .mockResolvedValueOnce(structuredClone(summaryPayload) as never);
 
     const { state } = await agentTurn(stateWithOneOpenTopic());
 
@@ -168,7 +343,7 @@ describe("agentTurn: guard преждевременного summarize", () => {
     expect(first.state.coverage.vetoCount).toBe(1);
 
     // Пользователь отвечает, модель снова настаивает на summarize
-    mockChat.mockResolvedValueOnce(summarizeTurn as never).mockResolvedValueOnce(summaryPayload as never);
+    mockChat.mockResolvedValueOnce(summarizeTurn as never).mockResolvedValueOnce(structuredClone(summaryPayload) as never);
     const second = await agentTurn(appendUserMessage(first.state, "ещё ответ"));
 
     expect(second.state.status).toBe(SESSION_STATUS.AWAITING_CONFIRMATION);
@@ -189,7 +364,7 @@ describe("agentTurn: guard преждевременного summarize", () => {
     expect(t2.state.coverage.vetoCount).toBe(1); // счётчик сохранился
 
     // Ход 3: снова summarize → второе вето → форс-резюме
-    mockChat.mockResolvedValueOnce(summarizeTurn as never).mockResolvedValueOnce(summaryPayload as never);
+    mockChat.mockResolvedValueOnce(summarizeTurn as never).mockResolvedValueOnce(structuredClone(summaryPayload) as never);
     const t3 = await agentTurn(appendUserMessage(t2.state, "ответ"));
     expect(t3.state.status).toBe(SESSION_STATUS.AWAITING_CONFIRMATION);
   });
@@ -202,7 +377,7 @@ describe("agentTurn: guard преждевременного summarize", () => {
         extracted_facts: [],
         coverage_update: { topic: TOPIC_GUT, status: "covered" },
         next_action: "ask",
-      } as never);
+      } as never).mockResolvedValueOnce(structuredClone(summaryPayload) as never);
 
     const first = await agentTurn(stateWithOneOpenTopic());
     expect(first.state.coverage.vetoCount).toBe(1);
@@ -228,7 +403,7 @@ describe("agentTurn: guard преждевременного summarize", () => {
   it("дословный повтор на последней теме не завершает интервью", async () => {
     const s = stateWithOneOpenTopic("Сколько писем?");
     mockChat.mockResolvedValueOnce({ message: "Сколько писем?", extracted_facts: [], next_action: "ask" } as never)
-      .mockResolvedValueOnce(summaryPayload as never);
+      .mockResolvedValueOnce(structuredClone(summaryPayload) as never);
 
     const { state } = await agentTurn(s);
     expect(state.status).toBe(SESSION_STATUS.IN_PROGRESS);

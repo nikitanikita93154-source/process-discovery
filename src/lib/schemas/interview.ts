@@ -29,6 +29,8 @@ export const factSchema = z.object({
   frequency: z.string().optional(),
   volume: z.string().optional(),
   duration: z.string().optional(), // длительность одного прохода, напр. «10–15 минут»
+  total_time: z.string().optional(), // суммарное время за период
+  improvements: z.array(z.string()).optional(),
   source: z.string(), // провенанс: "msg#N"
 });
 export type Fact = z.infer<typeof factSchema>;
@@ -36,6 +38,18 @@ export type Fact = z.infer<typeof factSchema>;
 const diveFieldSchema = z.enum(["input", "actions", "result", "tools", "participants", "frequency", "duration", "exceptions", "difficulties"]);
 const diveStatusSchema = z.enum(["known", "unknown", "declined"]);
 const candidateSchema = z.object({ task: z.string(), evidence: z.array(z.object({ description: z.string(), source: z.string() })) });
+const clarificationSchema = z.object({
+  kind: z.enum(["relation", "problem", "estimate"]),
+  subject: z.string().min(1),
+  detail: z.string().min(1),
+  question: z.string().min(1),
+  hypothesis: factSchema.optional(),
+});
+const outcomeSchema = z.enum(["answered", "unknown", "declined"]);
+const observationSchema = z.object({
+  task: z.string(), field: diveFieldSchema, status: diveStatusSchema,
+  quote: z.string().min(1), source: z.string(),
+});
 
 /** Строгий JSON-выход одного хода агента. */
 export const agentTurnSchema = z.object({
@@ -48,10 +62,22 @@ export const agentTurnSchema = z.object({
     })
     .optional(),
   next_action: z.enum(["ask", "follow_up", "summarize"]),
+  clarification: clarificationSchema.optional(),
+  previous_answer: outcomeSchema.optional(),
+  question_detail: z.string().optional(),
+  observations: z.array(observationSchema).optional(),
   dive_task: z.string().optional(),
   candidates: z.array(candidateSchema).optional(),
   dive_updates: z.array(z.object({ field: diveFieldSchema, status: diveStatusSchema })).optional(),
   answer_kind: z.enum(["short_substantive", "substantive", "other", "decline"]).optional(),
+  user_intent: z.enum(["continue", "end_interview", "skip_topic", "pause"]).optional(),
+  numeric_meaning: z.enum(["clear", "unclear"]).optional(),
+  fact_updates: z.array(z.object({
+    target_name: z.string(), target_source: z.string(),
+    action: z.enum(["revoke", "correct", "improve"]),
+    correction: z.string().optional(),
+    replacement: factSchema.optional(),
+  })).optional(),
 });
 export type AgentTurn = z.infer<typeof agentTurnSchema>;
 
@@ -64,6 +90,14 @@ export const coverageSchema = z.object({
   shortAnswers: z.number().int().optional(),
   detailPrompted: z.boolean().optional(),
   candidates: z.array(candidateSchema).optional(),
+  revokedTasks: z.array(z.string()).optional(),
+  paused: z.boolean().optional(),
+  clarifications: z.array(clarificationSchema.extend({
+    source: z.string(), status: z.union([outcomeSchema, z.literal("pending")]),
+    response: z.string().optional(), responseSource: z.string().optional(),
+  })).optional(),
+  questions: z.array(z.object({ topic: z.string(), detail: z.string(), status: z.union([outcomeSchema, z.literal("asked")]) })).optional(),
+  observations: z.array(observationSchema).optional(),
 });
 export type Coverage = z.infer<typeof coverageSchema>;
 
@@ -97,6 +131,8 @@ export const interviewSummarySchema = z.object({
         volume: z.string().default(""),
         frequency: z.string().optional(),
         duration: z.string().optional(),
+        total_time: z.string().optional(),
+        improvements: z.array(z.string()).optional(),
         pain: z.string().default(""),
         detail_status: z.enum(["discussed", "mentioned"]).optional(),
       }),

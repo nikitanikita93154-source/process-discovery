@@ -16,6 +16,8 @@ export const parsedSourceSchema = z.object({
         frequency: z.string().optional(),
         volume: z.string().optional(),
         duration: z.string().optional(), // длительность одного прохода
+        total_time: z.string().optional(),
+        improvements: z.array(z.string()).optional(),
         source: z.string().optional(), // провенанс
       }),
     )
@@ -133,7 +135,7 @@ export type ConflictDetection = z.infer<typeof conflictDetectionSchema>;
  *  с дедупликацией против step-фактов (по нормализованному названию).
  *  Решения «на глазок» (type=decision) уходят в gutDecisions, НЕ в шаги. */
 export function factsToParsedSource(input: {
-  facts: { type: string; name: string; actor?: string; system?: string; frequency?: string; volume?: string; duration?: string; source?: string }[];
+  facts: { type: string; name: string; actor?: string; system?: string; frequency?: string; volume?: string; duration?: string; total_time?: string; improvements?: string[]; source?: string }[];
   summary: { processes: { name: string; steps: string[]; actors: string[]; systems: string[]; volume?: string; pain?: string }[]; open_questions: string[] };
   citationRef: string;
 }): ParsedSource {
@@ -149,6 +151,8 @@ export function factsToParsedSource(input: {
       frequency: f.frequency,
       volume: f.volume,
       duration: f.duration,
+      total_time: f.total_time,
+      improvements: f.improvements,
       source: f.source,
     }));
   const gutDecisions = facts.filter((f) => f.type === "decision").map((f) => f.name);

@@ -33,10 +33,10 @@ describe("mainQuestionForTopic", () => {
     }
   });
 
-  it("вопрос роли явно спрашивает должность и отдел", () => {
+  it("вопрос роли не требует формального названия отдела", () => {
     const q = mainQuestionForTopic(TOPIC_ROLE);
-    expect(q).toContain("должность");
-    expect(q).toContain("отдел");
+    expect(q).toContain("работаете");
+    expect(q).not.toContain("отдел");
   });
 
   it("вопрос темы «на глазок» спрашивает про рутину для робота", () => {

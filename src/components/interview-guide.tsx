@@ -40,10 +40,13 @@ export function InterviewGuide({ onFinish }: { onFinish: () => void }) {
   useEffect(() => { cardRef.current?.focus(); }, [step]);
 
   const popupStyle = rect ? (() => {
-    const estimatedHeight = 250;
-    const below = window.innerHeight - (rect.top + rect.height);
-    const top = below >= estimatedHeight + 12 ? rect.top + rect.height + 12 : Math.max(12, rect.top - estimatedHeight - 12);
-    return { top, left: Math.max(12, Math.min(rect.left, window.innerWidth - Math.min(window.innerWidth - 24, 400) - 12)) };
+    const below = window.innerHeight - (rect.top + rect.height) - 24;
+    const above = rect.top - 24;
+    const placeBelow = below >= 250 || below >= above;
+    const available = Math.max(0, placeBelow ? below : above);
+    const height = Math.min(250, available);
+    const top = placeBelow ? rect.top + rect.height + 12 : rect.top - height - 12;
+    return { top, maxHeight: available, left: Math.max(12, Math.min(rect.left, window.innerWidth - Math.min(window.innerWidth - 24, 400) - 12)) };
   })() : { top: 16, left: 12 };
 
   return <Dialog.Root open onOpenChange={(open) => { if (!open) onFinish(); }}>
@@ -54,7 +57,7 @@ export function InterviewGuide({ onFinish }: { onFinish: () => void }) {
         <div aria-live="polite">
           <p className="mb-2 text-xs font-medium uppercase tracking-wide text-muted">Знакомство · {step + 1} / {STEPS.length}</p>
           <Dialog.Title className="font-head text-base font-medium">{STEPS[step].title}</Dialog.Title>
-          <Dialog.Description className="mt-2 text-sm leading-relaxed text-muted">{STEPS[step].text}</Dialog.Description>
+          <Dialog.Description className="mt-2 text-base leading-relaxed text-muted">{STEPS[step].text}</Dialog.Description>
         </div>
         <div className="mt-5 flex flex-wrap items-center justify-between gap-2">
           <Button type="button" variant="ghost" size="sm" onClick={onFinish}>Пропустить</Button>

@@ -96,6 +96,7 @@ export function InterviewChat({ initialSession }: { initialSession: InterviewSes
   const [busy, setBusy] = useState(false);
   const [voiceBusy, setVoiceBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [retryPayload, setRetryPayload] = useState<Record<string, unknown> | null>(null);
   const [summary, setSummary] = useState<InterviewSummary | null>(initialSession?.summary ?? null);
   const [confirming, setConfirming] = useState(false);
   const [showGuide, setShowGuide] = useState(() => !initialSession || (initialSession.transcript.length === 0 && !initialSession.summary));
@@ -150,16 +151,19 @@ export function InterviewChat({ initialSession }: { initialSession: InterviewSes
           },
           onTurn: (turn) => {
             setMessages((prev) => [...prev, { role: "assistant", text: turn.message, ts: new Date().toISOString() }]);
+            setRetryPayload(null);
           },
           onSummary: (s) => setSummary(s),
           onError: (message) => {
             setError(message);
+            setRetryPayload(payload);
             if (typeof payload.message === "string") setInput(payload.message);
           },
         },
       );
       } catch {
         setError(ru.errors.network);
+        setRetryPayload(payload);
         if (typeof payload.message === "string") setInput(payload.message);
       } finally {
         setBusy(false);
@@ -171,11 +175,11 @@ export function InterviewChat({ initialSession }: { initialSession: InterviewSes
   // Первый ход агента: приветствие при пустом транскрипте или ответ на
   // «висящее» неотвеченное сообщение после сбоя/перезагрузки
   useEffect(() => {
-    if (!showGuide && !startedRef.current) {
+    if (!startedRef.current) {
       startedRef.current = true;
       void runStream({});
     }
-  }, [runStream, showGuide]);
+  }, [runStream]);
 
   const sendMessage = async (text: string) => {
     const trimmed = text.trim();
@@ -190,6 +194,44 @@ export function InterviewChat({ initialSession }: { initialSession: InterviewSes
       return [...prev, { role: "user", text: trimmed, ts: new Date().toISOString() }];
     });
     await runStream({ message: trimmed });
+  };
+
+  const retryTurn = async () => {
+    if (busy || !retryPayload) return;
+    setBusy(true);
+    try {
+      const response = await fetch("/api/interview/session", { cache: "no-store" });
+      if (!response.ok) throw new Error("Не удалось восстановить состояние интервью.");
+      const data = await response.json() as { session: (InterviewSessionState & { sessionId?: string }) | null };
+      const saved = data.session;
+      const pendingText = typeof retryPayload.message === "string" ? retryPayload.message : undefined;
+      if (saved) {
+        const id = saved.sessionId ?? saved.id;
+        const transcript = saved.transcript ?? [];
+        setSession({ ...saved, id, topicsTotal: saved.agenda?.length ?? saved.topicsTotal });
+        setMessages(transcript);
+        setSummary(saved.summary);
+        const last = transcript.at(-1);
+        const lastUser = [...transcript].reverse().find((item) => item.role === "user");
+        if (pendingText && lastUser?.text === pendingText && last?.role !== "user") {
+          setInput(""); setError(null); setRetryPayload(null); setBusy(false); return;
+        }
+        if (last?.role === "user") {
+          setInput(""); setBusy(false); await runStream({ sessionId: id }); return;
+        }
+        if (pendingText) {
+          setMessages([...transcript, { role: "user", text: pendingText, ts: new Date().toISOString() }]);
+          setInput(""); setBusy(false); await runStream({ sessionId: id, message: pendingText }); return;
+        }
+        if (transcript.length > 0) { setError(null); setRetryPayload(null); setBusy(false); return; }
+        setBusy(false); await runStream({ sessionId: id }); return;
+      }
+      setBusy(false);
+      await runStream(retryPayload);
+    } catch {
+      setError("Не удалось восстановить состояние интервью. Попробуйте снова.");
+      setBusy(false);
+    }
   };
 
   const confirmSummary = async () => {
@@ -223,7 +265,7 @@ export function InterviewChat({ initialSession }: { initialSession: InterviewSes
 
   return (
     <div className="mx-auto flex h-[calc(100dvh-10rem)] min-h-[320px] max-w-4xl flex-col gap-3">
-      {showGuide && <InterviewGuide onFinish={() => setShowGuide(false)} />}
+      {showGuide && messages.some((message) => message.role === "assistant") && <InterviewGuide onFinish={() => setShowGuide(false)} />}
       <div className="flex shrink-0 flex-wrap items-start justify-between gap-x-4 gap-y-2" data-interview-guide="progress">
         <div className="min-w-0 flex-1 basis-48">
           <h1 className="flex items-center gap-2 text-base font-medium text-ink sm:text-lg">
@@ -237,12 +279,14 @@ export function InterviewChat({ initialSession }: { initialSession: InterviewSes
       </div>
 
       <div className="flex min-h-0 flex-1 flex-col">
-        <div ref={messagesRef} className="thin-scroll min-h-0 flex-1 space-y-5 overflow-y-auto px-1 py-4 sm:px-4" data-interview-guide="dialog">
+        <div ref={messagesRef} className="thin-scroll min-h-0 flex-1 space-y-5 overflow-y-auto px-1 py-4 sm:px-4">
           {messages.map((m, i) => (
             <div key={i} className={cn("flex", m.role === "user" ? "justify-end" : "justify-start")}>
               <div
+                data-interview-guide={i === 0 && m.role === "assistant" ? "dialog" : undefined}
                 className={cn(
-                  "max-w-[90%] break-words rounded-[22px] px-5 py-4 text-sm leading-relaxed whitespace-pre-wrap sm:max-w-[85%]",
+                  "max-w-[90%] break-words rounded-[22px] px-5 py-4 text-base leading-relaxed whitespace-pre-wrap sm:max-w-[85%]",
+                  showGuide && i === 0 && "max-h-[30dvh] overflow-y-auto",
                   m.role === "user"
                     ? "bg-ink text-white rounded-br-sm"
                     : "border border-line-soft bg-cream text-ink rounded-bl-sm",
@@ -268,7 +312,10 @@ export function InterviewChat({ initialSession }: { initialSession: InterviewSes
           )}
 
           {error && (
-            <div className="rounded-[14px] bg-danger-soft p-3 text-sm text-danger">{error}</div>
+            <div className="rounded-[14px] bg-danger-soft p-3 text-base text-danger" role="alert">
+              {error}
+              {retryPayload && <Button type="button" variant="outline" size="sm" className="mt-2 block" disabled={busy} onClick={() => void retryTurn()}>Попробовать снова</Button>}
+            </div>
           )}
         </div>
 
@@ -286,7 +333,7 @@ export function InterviewChat({ initialSession }: { initialSession: InterviewSes
           rows={1}
           value={input}
           placeholder={ru.interview.inputPlaceholder}
-          disabled={busy}
+          disabled={busy || retryPayload !== null || (showGuide && messages.length === 0)}
           onChange={(e) => {
             setInput(e.target.value);
             resizeTextarea();
@@ -297,10 +344,10 @@ export function InterviewChat({ initialSession }: { initialSession: InterviewSes
               void sendMessage(input);
             }
           }}
-          className="thin-scroll max-h-[30dvh] min-h-10 min-w-0 flex-1 resize-none bg-transparent px-4 py-2 text-base outline-none placeholder:text-muted disabled:opacity-60 sm:text-sm"
+          className="thin-scroll max-h-[30dvh] min-h-10 min-w-0 flex-1 resize-none bg-transparent px-4 py-2 text-base outline-none placeholder:text-muted disabled:opacity-60"
         />
         <div className="flex shrink-0 items-center">
-          <VoiceInput disabled={busy} hasText={Boolean(input.trim())} textTooLong={input.trim().length > 2000} onBusyChange={setVoiceBusy} onText={(text) => { setInput((previous) => previous.trim() ? `${previous.trimEnd()} ${text}` : text); requestAnimationFrame(resizeTextarea); }} />
+          <VoiceInput disabled={busy || retryPayload !== null || (showGuide && messages.length === 0)} hasText={Boolean(input.trim())} textTooLong={input.trim().length > 2000} onBusyChange={setVoiceBusy} onText={(text) => { setInput((previous) => previous.trim() ? `${previous.trimEnd()} ${text}` : text); requestAnimationFrame(resizeTextarea); }} />
           {input.trim().length > 2000 && <span role="alert" className="absolute bottom-full left-4 mb-2 rounded-lg bg-danger-soft px-2 py-1 text-xs text-danger">Сократите ответ до 2000 символов.</span>}
         </div>
       </form>
@@ -372,6 +419,7 @@ function SummaryCard({
             )}
             {p.frequency && <div><span className="font-mono text-[10px] uppercase tracking-wide text-muted">Частота: </span>{p.frequency}</div>}
             {p.duration && <div><span className="font-mono text-[10px] uppercase tracking-wide text-muted">Время выполнения: </span>{p.duration}</div>}
+            {p.total_time && <div><span className="font-mono text-[10px] uppercase tracking-wide text-muted">Общее время: </span>{p.total_time}</div>}
             {p.pain && (
               <div>
                 <span className="font-mono text-[10px] uppercase tracking-wide text-muted">{ru.interview.processPain}: </span>
@@ -379,11 +427,18 @@ function SummaryCard({
               </div>
             )}
           </div>
+          {p.improvements && p.improvements.length > 0 && <p><span className="font-medium">Пожелания: </span>{p.improvements.join(", ")}</p>}
         </div>
       ))}
 
-      {/* open_questions сознательно не показываем сотруднику:
-          это вопросы для владельца/аналитика, хранятся в БД */}
+      {summary.open_questions.length > 0 && (
+        <div className="space-y-1 text-sm">
+          <p className="font-medium">Что осталось невыясненным</p>
+          <ul className="ml-4 list-disc text-muted">
+            {summary.open_questions.map((question, index) => <li key={index}>{question}</li>)}
+          </ul>
+        </div>
+      )}
 
       <div className="flex flex-col gap-2 pt-1 sm:flex-row sm:items-center sm:justify-between">
         <p className="text-xs text-muted">{ru.interview.confirmHint}</p>
